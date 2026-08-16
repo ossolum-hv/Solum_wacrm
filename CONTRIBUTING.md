@@ -16,9 +16,9 @@ opinions become yours.
 ## Fork and run
 
 ```bash
-# 1. Fork on GitHub: https://github.com/ArnasDon/wacrm → Fork
+# 1. Fork on GitHub: https://github.com/ossolum-hv/Solum_wacrm → Fork
 # 2. Clone your fork
-git clone https://github.com/<your-username>/wacrm.git
+git clone https://github.com/<your-username>/Solum_wacrm.git
 cd wacrm
 
 cp .env.local.example .env.local   # fill in Supabase + Meta creds
@@ -34,7 +34,8 @@ Full setup (Supabase migrations, WhatsApp Business API, deploy) lives in
 Pull in upstream bug fixes and security patches periodically:
 
 ```bash
-git remote add upstream https://github.com/ArnasDon/wacrm.git  # once
+# No upstream remote needed — this is your standalone repository
+# git remote add upstream https://github.com/ossolum-hv/Solum_wacrm.git  # once (optional)
 git fetch upstream
 git checkout main
 git merge upstream/main     # or: git rebase upstream/main
@@ -48,9 +49,9 @@ updating on your schedule is a valid alternative.
 
 ## Reporting bugs in the upstream template
 
-If you find a bug in the upstream code — not one you introduced in your
+If you find a bug in this template — not one you introduced in your
 fork — please file it using the
-[bug report](https://github.com/ArnasDon/wacrm/issues/new?template=bug_report.yml)
+[bug report](https://github.com/ossolum-hv/Solum_wacrm/issues/new?template=bug_report.yml)
 template. Including the commit SHA, the runtime (Hostinger / Vercel /
 local / other), and logs will get to a fix fastest.
 

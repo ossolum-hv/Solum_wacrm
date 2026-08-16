@@ -74,9 +74,9 @@ in an afternoon and make yours.
 ## Quick start
 
 ```bash
-# Fork on GitHub first: https://github.com/ArnasDon/wacrm → Fork
-git clone https://github.com/<your-username>/wacrm.git
-cd wacrm
+# Fork on GitHub first: https://github.com/ossolum-hv/Solum_wacrm → Fork
+git clone https://github.com/<your-username>/Solum_wacrm.git
+cd Solum_wacrm
 npm install
 cp .env.local.example .env.local   # fill in Supabase + Meta creds
 npm run dev
@@ -138,8 +138,7 @@ Full walkthrough with screenshots:
 
 Full self-host documentation — Supabase migrations, WhatsApp Business
 API config, and production deploy — lives at
-**[wacrm.tech/docs](https://wacrm.tech/docs)**
-(source: [ArnasDon/wacrm-site](https://github.com/ArnasDon/wacrm-site)).
+**[wacrm.tech/docs](https://wacrm.tech/docs)**.
 
 Key pages:
 - [Getting started](https://wacrm.tech/docs/getting-started)
