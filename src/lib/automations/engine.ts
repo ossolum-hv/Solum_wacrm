@@ -12,6 +12,8 @@ import type {
   SendListStepConfig,
   SendTemplateStepConfig,
   SendWebhookStepConfig,
+  SendPaymentLinkStepConfig,
+  SendDownloadLinkStepConfig,
   TagStepConfig,
   UpdateContactFieldStepConfig,
   WaitStepConfig,
@@ -619,6 +621,158 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       return 'conversation closed'
     }
 
+    case 'send_payment_link': {
+      const cfg = step.step_config as SendPaymentLinkStepConfig
+      if (!args.contactId) throw new Error('send_payment_link needs a contact')
+      if (!cfg.product_id) throw new Error('send_payment_link needs product_id')
+
+      // Look up the product (tenant-scoped) to read price + name and to
+      // drive the order row. A missing/foreign product_id is refused.
+      const { data: product, error: prodErr } = await db
+        .from('products')
+        .select('id, account_id, name, price_cents, currency, digital_file_url')
+        .eq('id', cfg.product_id)
+        .eq('account_id', args.automation.account_id)
+        .maybeSingle()
+      if (prodErr) throw new Error(`product lookup failed: ${prodErr.message}`)
+      if (!product) throw new Error('send_payment_link: product not found in account')
+
+      // Resolve the payment URL. For manual_url we interpolate the
+      // template (supports {{vars.*}}); for stripe_checkout we'd create a
+      // Stripe Checkout Session — left as a hook since Stripe isn't wired
+      // up yet (no STRIPE_SECRET_KEY). The order row is created now so the
+      // payment verification step can later match on a paid order.
+      let paymentUrl = ''
+      const orderId =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      if (cfg.provider === 'manual_url') {
+        if (!cfg.manual_url_template) throw new Error('send_payment_link: manual_url needs manual_url_template')
+        paymentUrl = interpolate(cfg.manual_url_template, {
+          ...args,
+          context: {
+            ...args.context,
+            vars: { ...(args.context.vars ?? {}), order_id: orderId, product_id: product.id },
+          },
+        })
+      } else {
+        // stripe_checkout: placeholder until Stripe is integrated.
+        throw new Error('send_payment_link: stripe_checkout provider is not configured yet')
+      }
+
+      // Snapshot the order (pending) so fulfillment/payment-verification
+      // can find it. Tenant-scoped via product's account_id; user_id is
+      // the automation author (audit only).
+      const { error: ordErr } = await db.from('orders').insert({
+        id: orderId,
+        account_id: product.account_id,
+        user_id: args.automation.user_id,
+        product_id: product.id,
+        contact_id: args.contactId,
+        price_cents: product.price_cents,
+        currency: product.currency,
+        quantity: 1,
+        status: 'pending',
+        payment_provider: cfg.provider,
+        payment_url: paymentUrl,
+        metadata: { product_name: product.name },
+      })
+      if (ordErr) throw new Error(`order insert failed: ${ordErr.message}`)
+
+      // Send the WhatsApp message with the product info + payment link.
+      const text = interpolate(cfg.message_text, {
+        ...args,
+        context: {
+          ...args.context,
+          vars: {
+            ...(args.context.vars ?? {}),
+            order_id: orderId,
+            product_name: product.name,
+            payment_url: paymentUrl,
+          },
+        },
+      }) + (paymentUrl ? `\n\n${paymentUrl}` : '')
+      const conversationId = await resolveConversationId(args)
+      const { whatsapp_message_id } = await engineSendText({
+        accountId: args.automation.account_id,
+        userId: args.automation.user_id,
+        conversationId,
+        contactId: args.contactId,
+        text,
+      })
+
+      // Carry the order_id forward so the payment verification condition
+      // (and downstream download step) can reference it.
+      args.context.vars = {
+        ...(args.context.vars ?? {}),
+        order_id: orderId,
+        payment_url: paymentUrl,
+        product_id: product.id,
+      }
+      return `payment link sent via Meta (${whatsapp_message_id}); order ${orderId}`
+    }
+
+    case 'send_download_link': {
+      const cfg = step.step_config as SendDownloadLinkStepConfig
+      if (!args.contactId) throw new Error('send_download_link needs a contact')
+
+      // Resolve the product: explicit product_id, the one stashed in
+      // {{vars.product_id}} by an upstream send_payment_link step, or the
+      // product_id of the most recent order for this contact.
+      let productId = cfg.product_id || (args.context.vars?.product_id as string | undefined)
+      if (!productId) {
+        const orderId = args.context.vars?.order_id as string | undefined
+        const { data: ord } = await db
+          .from('orders')
+          .select('product_id')
+          .eq('account_id', args.automation.account_id)
+          .eq('contact_id', args.contactId)
+          .eq('status', 'paid')
+          .order('created_at', { ascending: false })
+          .limit(1)
+        productId = ord?.[0]?.product_id
+      }
+      if (!productId) throw new Error('send_download_link: no product resolved')
+
+      const { data: product, error: prodErr } = await db
+        .from('products')
+        .select('id, account_id, name, digital_file_url')
+        .eq('id', productId)
+        .eq('account_id', args.automation.account_id)
+        .maybeSingle()
+      if (prodErr) throw new Error(`product lookup failed: ${prodErr.message}`)
+      if (!product) throw new Error('send_download_link: product not found in account')
+
+      // Resolve the URL: explicit template, else the product's file URL.
+      const resolvedUrl = cfg.download_url_template
+        ? interpolate(cfg.download_url_template, args)
+        : (product.digital_file_url ?? '')
+      if (!resolvedUrl) throw new Error('send_download_link: no download URL available')
+
+      const text =
+        interpolate(cfg.message_text, {
+          ...args,
+          context: {
+            ...args.context,
+            vars: {
+              ...(args.context.vars ?? {}),
+              product_name: product.name,
+              download_url: resolvedUrl,
+            },
+          },
+        }) + `\n\n${resolvedUrl}`
+      const conversationId = await resolveConversationId(args)
+      const { whatsapp_message_id } = await engineSendText({
+        accountId: args.automation.account_id,
+        userId: args.automation.user_id,
+        conversationId,
+        contactId: args.contactId,
+        text,
+      })
+      return `download link sent via Meta (${whatsapp_message_id})`
+    }
+
     default:
       return `unknown step: ${step.step_type}`
   }
@@ -779,6 +933,24 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
       const f = parse(from)
       const t = parse(to)
       return f <= t ? mins >= f && mins < t : mins >= f || mins < t
+    }
+    case 'payment_status': {
+      if (!args.contactId) return false
+      // operand is the expected OrderStatus to match (default 'paid').
+      const expected = (cfg.operand ?? 'paid').toLowerCase()
+      const orderId = args.context.vars?.order_id as string | undefined
+      let query = db
+        .from('orders')
+        .select('status')
+        .eq('account_id', args.automation.account_id)
+        .eq('contact_id', args.contactId)
+      // Narrow to a specific order when one is in context (e.g. created
+      // by an upstream send_payment_link step), otherwise check whether
+      // the contact has ANY order in the expected status.
+      if (orderId) query = query.eq('id', orderId)
+      const { data } = await query.order('created_at', { ascending: false }).limit(1)
+      const status = (data?.[0]?.status ?? '').toLowerCase()
+      return status === expected
     }
     default:
       return false

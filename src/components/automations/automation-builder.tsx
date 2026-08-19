@@ -33,6 +33,8 @@ import {
   ArrowUp,
   MousePointerClick,
   List,
+  CreditCard,
+  Download,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -119,6 +121,8 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   wait: { label: "wait", icon: Hourglass, border: "border-l-border" },
   condition: { label: "condition", icon: GitBranch, border: "border-l-amber-500" },
   send_webhook: { label: "send_webhook", icon: Webhook, border: "border-l-primary" },
+  send_payment_link: { label: "send_payment_link", icon: CreditCard, border: "border-l-primary" },
+  send_download_link: { label: "send_download_link", icon: Download, border: "border-l-primary" },
   close_conversation: { label: "close_conversation", icon: CircleSlash, border: "border-l-primary" },
 }
 
@@ -135,6 +139,8 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "wait",
   "condition",
   "send_webhook",
+  "send_payment_link",
+  "send_download_link",
   "close_conversation",
 ]
 
@@ -195,6 +201,10 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
       return { subject: "tag_presence", operand: "", value: "" }
     case "send_webhook":
       return { url: "", headers: {}, body_template: "" }
+    case "send_payment_link":
+      return { product_id: "", provider: "manual_url", message_text: "", button_text: "Buy Now" }
+    case "send_download_link":
+      return { product_id: "", message_text: "", download_url_template: "" }
     case "close_conversation":
       return {}
     default:
@@ -219,6 +229,14 @@ interface AutomationResources {
   customFields: CustomField[]
   pipelines: PipelineOption[]
   stages: PipelineStageOption[]
+  products: ProductOption[]
+}
+
+interface ProductOption {
+  id: string
+  name: string
+  price_cents: number
+  currency: string
 }
 
 interface PipelineOption {
@@ -240,6 +258,7 @@ const ResourcesContext = createContext<AutomationResources>({
   customFields: [],
   pipelines: [],
   stages: [],
+  products: [],
 })
 
 function useResources(): AutomationResources {
@@ -253,6 +272,7 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
   const [customFields, setCustomFields] = useState<CustomField[]>([])
   const [pipelines, setPipelines] = useState<PipelineOption[]>([])
   const [stages, setStages] = useState<PipelineStageOption[]>([])
+  const [products, setProducts] = useState<ProductOption[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -263,27 +283,39 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
     // actually be sent (anything else 400s at send time), matching the
     // broadcast picker.
     void (async () => {
-      const [tagsRes, templatesRes, customFieldsRes, pipelinesRes, stagesRes] =
-        await Promise.all([
-          supabase.from("tags").select("*").order("name"),
-          supabase
-            .from("message_templates")
-            .select("*")
-            .eq("status", "APPROVED")
-            .order("name"),
-          supabase.from("custom_fields").select("*").order("field_name"),
-          supabase.from("pipelines").select("id, name").order("name"),
-          supabase
-            .from("pipeline_stages")
-            .select("id, name, pipeline_id, position")
-            .order("position"),
-        ])
+      const [
+        tagsRes,
+        templatesRes,
+        customFieldsRes,
+        pipelinesRes,
+        stagesRes,
+        productsRes,
+      ] = await Promise.all([
+        supabase.from("tags").select("*").order("name"),
+        supabase
+          .from("message_templates")
+          .select("*")
+          .eq("status", "APPROVED")
+          .order("name"),
+        supabase.from("custom_fields").select("*").order("field_name"),
+        supabase.from("pipelines").select("id, name").order("name"),
+        supabase
+          .from("pipeline_stages")
+          .select("id, name, pipeline_id, position")
+          .order("position"),
+        supabase
+          .from("products")
+          .select("id, name, price_cents, currency")
+          .eq("is_active", true)
+          .order("sort_order"),
+      ])
       if (cancelled) return
       setTags((tagsRes.data as TagRecord[] | null) ?? [])
       setTemplates((templatesRes.data as MessageTemplate[] | null) ?? [])
       setCustomFields((customFieldsRes.data as CustomField[] | null) ?? [])
       setPipelines((pipelinesRes.data as PipelineOption[] | null) ?? [])
       setStages((stagesRes.data as PipelineStageOption[] | null) ?? [])
+      setProducts((productsRes.data as ProductOption[] | null) ?? [])
     })()
 
     // Members go through the API so we inherit its email-visibility
@@ -307,7 +339,7 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
 
   return (
     <ResourcesContext.Provider
-      value={{ tags, members, templates, customFields, pipelines, stages }}
+      value={{ tags, members, templates, customFields, pipelines, stages, products }}
     >
       {children}
     </ResourcesContext.Provider>
@@ -1454,6 +1486,7 @@ function StepEditor({
               <option value="contact_field">{t("config.subjects.contact_field")}</option>
               <option value="message_content">{t("config.subjects.message_content")}</option>
               <option value="time_of_day">{t("config.subjects.time_of_day")}</option>
+              <option value="payment_status">{t("config.subjects.payment_status")}</option>
             </select>
           </FieldBlock>
           <FieldBlock label={t("config.operandLabel")}>
@@ -1508,9 +1541,121 @@ function StepEditor({
           {t("config.closeConversationHint", { defaultValue: "Sets the conversation status to \"closed\". No configuration needed." })}
         </p>
       )
+    case "send_payment_link":
+      return (
+        <>
+          <FieldBlock label={t("config.productLabel", { defaultValue: "Product" })}>
+            <ProductSelect
+              value={(cfg.product_id as string) ?? ""}
+              onChange={(v) => set({ product_id: v })}
+              t={t}
+            />
+          </FieldBlock>
+          <FieldBlock label={t("config.providerLabel", { defaultValue: "Payment provider" })}>
+            <select
+              value={(cfg.provider as string) ?? "manual_url"}
+              onChange={(e) => set({ provider: e.target.value })}
+              className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
+            >
+              <option value="manual_url">{t("config.providers.manual_url", { defaultValue: "Manual URL" })}</option>
+              <option value="stripe_checkout" disabled>{t("config.providers.stripe_checkout", { defaultValue: "Stripe Checkout (not configured)" })}</option>
+            </select>
+          </FieldBlock>
+          {cfg.provider === "manual_url" && (
+            <FieldBlock label={t("config.manualUrlLabel", { defaultValue: "Payment URL template" })}>
+              <Input
+                value={(cfg.manual_url_template as string) ?? ""}
+                onChange={(e) => set({ manual_url_template: e.target.value })}
+                placeholder="https://pay.example.com/checkout/{{vars.order_id}}"
+                className="bg-muted text-foreground"
+              />
+            </FieldBlock>
+          )}
+          <FieldBlock label={t("config.messageLabel", { defaultValue: "Message text" })}>
+            <Textarea
+              value={(cfg.message_text as string) ?? ""}
+              onChange={(e) => set({ message_text: e.target.value })}
+              placeholder={t("config.placeholderMessageText")}
+              className="min-h-20 bg-muted text-foreground"
+            />
+          </FieldBlock>
+          <FieldBlock label={t("config.buttonTextLabel", { defaultValue: "Button text (max 20 chars)" })}>
+            <Input
+              value={(cfg.button_text as string) ?? ""}
+              onChange={(e) => set({ button_text: e.target.value })}
+              maxLength={20}
+              className="bg-muted text-foreground"
+            />
+          </FieldBlock>
+        </>
+      )
+    case "send_download_link":
+      return (
+        <>
+          <FieldBlock label={t("config.productLabel", { defaultValue: "Product" })}>
+            <ProductSelect
+              value={(cfg.product_id as string) ?? ""}
+              onChange={(v) => set({ product_id: v })}
+              t={t}
+            />
+          </FieldBlock>
+          <FieldBlock label={t("config.messageLabel", { defaultValue: "Message text" })}>
+            <Textarea
+              value={(cfg.message_text as string) ?? ""}
+              onChange={(e) => set({ message_text: e.target.value })}
+              placeholder={t("config.placeholderMessageText")}
+              className="min-h-20 bg-muted text-foreground"
+            />
+          </FieldBlock>
+          <FieldBlock label={t("config.downloadUrlLabel", { defaultValue: "Download URL template (optional)" })}>
+            <Input
+              value={(cfg.download_url_template as string) ?? ""}
+              onChange={(e) => set({ download_url_template: e.target.value })}
+              placeholder="https://cdn.example.com/file/{{vars.order_id}}/download"
+              className="bg-muted text-foreground"
+            />
+          </FieldBlock>
+        </>
+      )
     default:
       return null
   }
+}
+
+function ProductSelect({
+  value,
+  onChange,
+  t,
+}: {
+  value: string
+  onChange: (v: string) => void
+  t: (key: string, values?: Record<string, string | number | Date>) => string
+}) {
+  const { products } = useResources()
+  if (products.length === 0) {
+    return (
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={t("config.placeholderProductId", { defaultValue: "Product ID (UUID)" })}
+        className="bg-muted text-foreground"
+      />
+    )
+  }
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
+    >
+      <option value="">{t("config.selectProduct", { defaultValue: "Select a product…" })}</option>
+      {products.map((p) => (
+        <option key={p.id} value={p.id}>
+          {p.name} — {p.price_cents / 100} {p.currency}
+        </option>
+      ))}
+    </select>
+  )
 }
 
 function FieldBlock({
@@ -1543,6 +1688,10 @@ function previewFor(step: BuilderStep): string {
       return `when ${step.step_config.subject ?? "?"}`
     case "send_webhook":
       return (step.step_config.url as string) || "no url"
+    case "send_payment_link":
+      return (step.step_config.message_text as string) || "no message"
+    case "send_download_link":
+      return (step.step_config.message_text as string) || "no message"
     default:
       return ""
   }

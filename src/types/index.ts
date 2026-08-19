@@ -480,6 +480,8 @@ export type AutomationStepType =
   | 'wait'
   | 'condition'
   | 'send_webhook'
+  | 'send_payment_link'
+  | 'send_download_link'
   | 'close_conversation';
 
 export type AutomationLogStatus = 'success' | 'partial' | 'failed';
@@ -577,7 +579,8 @@ export type ConditionSubject =
   | 'contact_field'
   | 'tag_presence'
   | 'message_content'
-  | 'time_of_day';
+  | 'time_of_day'
+  | 'payment_status';
 
 export interface ConditionStepConfig {
   subject: ConditionSubject;
@@ -605,6 +608,8 @@ export type AutomationStepConfig =
   | WaitStepConfig
   | ConditionStepConfig
   | SendWebhookStepConfig
+  | SendPaymentLinkStepConfig
+  | SendDownloadLinkStepConfig
   | Record<string, never>
   | Record<string, unknown>;
 
@@ -657,6 +662,86 @@ export interface AutomationLog {
   error_message?: string | null;
   created_at: string;
   contact?: Contact;
+}
+
+// ============================================================
+// Products & Orders (migration 040)
+// ============================================================
+
+export type ProductType = 'digital' | 'physical';
+
+export interface Product {
+  id: string;
+  account_id: string;
+  user_id: string;
+  name: string;
+  description?: string | null;
+  type: ProductType;
+  price_cents: number;
+  currency: string;
+  digital_file_url?: string | null;
+  digital_file_name?: string | null;
+  sku?: string | null;
+  weight_grams?: number | null;
+  requires_shipping: boolean;
+  is_active: boolean;
+  sort_order: number;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export type OrderStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'cancelled';
+export type FulfillmentStatus = 'pending' | 'fulfilled' | 'shipped' | 'delivered' | 'failed';
+
+export interface Order {
+  id: string;
+  account_id: string;
+  user_id: string;
+  product_id: string;
+  contact_id: string;
+  price_cents: number;
+  currency: string;
+  quantity: number;
+  status: OrderStatus;
+  payment_provider?: string | null;
+  payment_intent_id?: string | null;
+  payment_url?: string | null;
+  paid_at?: string | null;
+  fulfillment_status: FulfillmentStatus;
+  fulfillment_notes?: string | null;
+  fulfilled_at?: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  // Joined relations
+  product?: Product;
+  contact?: Contact;
+}
+
+// ============================================================
+// Send Payment Link Automation Step Config
+// ============================================================
+
+export interface SendPaymentLinkStepConfig {
+  product_id: string;
+  /** 'stripe_checkout' | 'manual_url' */
+  provider: 'stripe_checkout' | 'manual_url';
+  /** Used when provider === 'manual_url' — supports {{vars.*}} interpolation */
+  manual_url_template?: string;
+  /** Message text accompanying the link (supports interpolation) */
+  message_text: string;
+  /** Button text for Stripe Checkout (max 20 chars per Meta) */
+  button_text?: string;
+}
+
+export interface SendDownloadLinkStepConfig {
+  /** Product whose digital_file_url is sent. Defaults to {{vars.product_id}} / {{vars.order_id}} lookup. */
+  product_id?: string;
+  /** Message text sent with the download link (supports interpolation). */
+  message_text: string;
+  /** Override the download URL; defaults to the product's digital_file_url. Supports {{vars.*}}. */
+  download_url_template?: string;
 }
 
 // ============================================================

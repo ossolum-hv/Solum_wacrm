@@ -1,0 +1,65 @@
+npm notice run wacrm@0.8.0 dev
+npm notice run next dev
+▲ Next.js 16.2.12 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://172.20.128.1:3000
+- Environments: .env.local
+✓ Ready in 1360ms
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+
+ GET /api/products 401 in 1701ms (next.js: 1428ms, proxy.ts: 194ms, application-code: 79ms)
+○ Compiling /automations ...
+ GET /automations 200 in 11.5s (next.js: 8.9s, proxy.ts: 2.1s, application-code: 538ms)
+ GET /icon 200 in 2.5s (proxy.ts: 408ms)
+○ Compiling /products ...
+ GET /automations 200 in 1342ms (next.js: 105ms, proxy.ts: 627ms, application-code: 610ms)
+ GET /icon 200 in 449ms (proxy.ts: 360ms)
+ GET /products 200 in 932ms (next.js: 31ms, proxy.ts: 834ms, application-code: 67ms)
+ GET /api/products?page=0&pageSize=25&sortBy=sort_order&sortOrder=asc 200 in 1484ms (next.js: 25ms, proxy.ts: 391ms, application-code: 1068ms)
+[browser] In HTML, <button> cannot be a descendant of <button>.
+This will cause a hydration error.
+
+  ...
+    <table data-slot="table" className="w-full cap...">
+      <TableHeader>
+      <TableBody>
+        <tbody data-slot="table-body" className={"[&_tr:la..."}>
+          <TableRow className="border-bor...">
+            <tr data-slot="table-row" className="border-b h...">
+              <TableCell>
+              <TableCell>
+              <TableCell>
+              <TableCell>
+              <TableCell>
+              <TableCell className="text-right">
+                <td data-slot="table-cell" className={"p-2 alig..."}>
+                  <DropdownMenu>
+                    <MenuRoot data-slot="dropdown-menu">
+                      <FloatingTree externalTree={{nodesRef:{...}, ...}}>
+                        <DropdownMenuTrigger>
+                          <MenuTrigger data-slot="dropdown-m...">
+>                           <button
+>                             type="button"
+>                             onClick={function}
+>                             onMouseDown={function}
+>                             onKeyDown={function}
+>                             onKeyUp={function}
+>                             onPointerDown={function}
+>                             tabIndex={0}
+>                             disabled={false}
+>                             aria-haspopup="menu"
+>                             aria-controls={undefined}
+>                             id="base-ui-_r_17_"
+>                             data-slot="dropdown-menu-trigger"
+>                             ref={function}
+>                           >
+>                             <button
+>                               className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground h..."
+>                               aria-label="Edit"
+>                             >
+                        ...
+ 
+[browser] <button> cannot contain a nested <button>.
+See this log for the ancestor stack trace. 
+ GET /api/products?page=0&pageSize=25&sortBy=sort_order&sortOrder=asc 200 in 1319ms (next.js: 8ms, proxy.ts: 323ms, application-code: 987ms)
+ GET /api/products?page=0&pageSize=25&sortBy=sort_order&sortOrder=asc 200 in 1270ms (next.js: 9ms, proxy.ts: 300ms, application-code: 961ms)

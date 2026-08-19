@@ -146,6 +146,25 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
     case 'close_conversation':
       // No config required.
       break
+    case 'send_payment_link':
+      if (!nonEmpty(c.product_id)) {
+        issues.push({ path: `${path}.product_id`, message: 'product is required' })
+      }
+      if (c.provider === 'manual_url' && !nonEmpty(c.manual_url_template)) {
+        issues.push({
+          path: `${path}.manual_url_template`,
+          message: 'payment URL template is required for manual_url',
+        })
+      }
+      if (!nonEmpty(c.message_text)) {
+        issues.push({ path: `${path}.message_text`, message: 'message text is required' })
+      }
+      break
+    case 'send_download_link':
+      if (!nonEmpty(c.message_text)) {
+        issues.push({ path: `${path}.message_text`, message: 'message text is required' })
+      }
+      break
     default:
       issues.push({ path, message: `unknown step type: ${step.step_type}` })
   }
@@ -211,3 +230,4 @@ export function validateTriggerForActivation(
 function nonEmpty(v: unknown): boolean {
   return typeof v === 'string' && v.trim().length > 0
 }
+
