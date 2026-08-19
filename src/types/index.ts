@@ -765,3 +765,43 @@ export interface QuickReply {
   created_at: string;
   updated_at: string;
 }
+
+// ============================================================
+// Instagram (migrations 041, 042)
+// ============================================================
+
+export type InstagramConfigStatus = 'connected' | 'disconnected' | 'expired';
+
+export interface InstagramConfig {
+  id: string;
+  account_id: string;
+  user_id: string;
+  ig_business_id: string;
+  ig_username: string;
+  page_id: string;
+  page_access_token: string;        // encrypted (AES-256-GCM)
+  verify_token: string;             // encrypted (AES-256-GCM)
+  status: InstagramConfigStatus;
+  webhook_subscribed: boolean;
+  connected_at: string;
+  last_synced_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type InstagramSourceType = 'comment' | 'dm' | 'both';
+
+export interface InstagramKeywordLink {
+  id: string;
+  account_id: string;
+  user_id: string;
+  keyword: string;
+  product_id?: string | null;
+  wa_prefill_message: string;
+  source_type: InstagramSourceType;
+  active: boolean;
+  reply_text?: string | null;
+  created_at: string;
+  updated_at: string;
+  product?: Product | null;
+}
