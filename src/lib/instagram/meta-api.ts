@@ -12,6 +12,40 @@ async function throwMetaError(response: Response, fallback: string): Promise<nev
   throw new Error(message)
 }
 
+export async function verifyInstagramPageToken({
+  pageId,
+  igBusinessId,
+  accessToken,
+}: {
+  pageId: string
+  igBusinessId: string
+  accessToken: string
+}): Promise<{ id: string; name?: string; username?: string | null }> {
+  const url = `${META_API_BASE}/${pageId}?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(accessToken)}`
+  const response = await fetch(url, { method: 'GET' })
+
+  if (!response.ok) {
+    await throwMetaError(response, `Instagram page validation failed: ${response.status}`)
+  }
+
+  const data = await response.json()
+  const match = data.instagram_business_account ?? data.instagram_business_accounts?.data?.[0] ?? null
+
+  if (!data.id) {
+    throw new Error('Meta did not return a valid Facebook Page ID.')
+  }
+
+  if (!match || match.id !== igBusinessId) {
+    throw new Error(`This Page token is not connected to Instagram Business ID ${igBusinessId}.`)
+  }
+
+  return {
+    id: data.id,
+    name: data.name,
+    username: match.username ?? null,
+  }
+}
+
 /**
  * Send a private reply to a comment (Meta-sanctioned path).
  * POST /{comment-id}/private_replies
