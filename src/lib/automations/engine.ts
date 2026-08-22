@@ -25,6 +25,7 @@ import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
 import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
+import { createStripeCheckoutSession } from '@/lib/payments/stripe'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
 
 // ------------------------------------------------------------
@@ -626,27 +627,23 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!args.contactId) throw new Error('send_payment_link needs a contact')
       if (!cfg.product_id) throw new Error('send_payment_link needs product_id')
 
-      // Look up the product (tenant-scoped) to read price + name and to
-      // drive the order row. A missing/foreign product_id is refused.
       const { data: product, error: prodErr } = await db
         .from('products')
-        .select('id, account_id, name, price_cents, currency, digital_file_url')
+        .select('id, account_id, name, price_cents, currency, digital_file_url, is_active')
         .eq('id', cfg.product_id)
         .eq('account_id', args.automation.account_id)
         .maybeSingle()
       if (prodErr) throw new Error(`product lookup failed: ${prodErr.message}`)
       if (!product) throw new Error('send_payment_link: product not found in account')
+      if (!product.is_active) throw new Error('send_payment_link: product is inactive')
 
-      // Resolve the payment URL. For manual_url we interpolate the
-      // template (supports {{vars.*}}); for stripe_checkout we'd create a
-      // Stripe Checkout Session — left as a hook since Stripe isn't wired
-      // up yet (no STRIPE_SECRET_KEY). The order row is created now so the
-      // payment verification step can later match on a paid order.
       let paymentUrl = ''
+      let paymentProvider = cfg.provider === 'stripe_checkout' ? 'stripe' : 'manual_url'
       const orderId =
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+
       if (cfg.provider === 'manual_url') {
         if (!cfg.manual_url_template) throw new Error('send_payment_link: manual_url needs manual_url_template')
         paymentUrl = interpolate(cfg.manual_url_template, {
@@ -657,30 +654,77 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
           },
         })
       } else {
-        // stripe_checkout: placeholder until Stripe is integrated.
-        throw new Error('send_payment_link: stripe_checkout provider is not configured yet')
+        const { data: contact } = await db
+          .from('contacts')
+          .select('email')
+          .eq('id', args.contactId)
+          .eq('account_id', args.automation.account_id)
+          .maybeSingle()
+
+        try {
+          const session = await createStripeCheckoutSession({
+            amountCents: product.price_cents,
+            productName: product.name,
+            quantity: 1,
+            currency: product.currency || 'USD',
+            customerEmail: contact?.email ?? undefined,
+            successUrl: `${process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/checkout/success?order_id=${orderId}`,
+            cancelUrl: `${process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/checkout/cancel?order_id=${orderId}`,
+            metadata: {
+              order_id: orderId,
+              product_id: product.id,
+              contact_id: args.contactId,
+              account_id: args.automation.account_id,
+              source: 'automation_checkout',
+            },
+          })
+          paymentUrl = session.url ?? ''
+          paymentProvider = 'stripe'
+
+          const { error: ordErr } = await db.from('orders').insert({
+            id: orderId,
+            account_id: product.account_id,
+            user_id: args.automation.user_id,
+            product_id: product.id,
+            contact_id: args.contactId,
+            price_cents: product.price_cents,
+            currency: product.currency,
+            quantity: 1,
+            status: 'pending',
+            payment_provider: paymentProvider,
+            payment_url: paymentUrl,
+            payment_intent_id: session.id,
+            metadata: {
+              product_name: product.name,
+              checkout_source: 'automation_checkout',
+              stripe_checkout_id: session.id,
+            },
+          })
+          if (ordErr) throw new Error(`order insert failed: ${ordErr.message}`)
+        } catch (stripeErr) {
+          const message = stripeErr instanceof Error ? stripeErr.message : String(stripeErr)
+          throw new Error(`stripe_checkout failed: ${message}`)
+        }
       }
 
-      // Snapshot the order (pending) so fulfillment/payment-verification
-      // can find it. Tenant-scoped via product's account_id; user_id is
-      // the automation author (audit only).
-      const { error: ordErr } = await db.from('orders').insert({
-        id: orderId,
-        account_id: product.account_id,
-        user_id: args.automation.user_id,
-        product_id: product.id,
-        contact_id: args.contactId,
-        price_cents: product.price_cents,
-        currency: product.currency,
-        quantity: 1,
-        status: 'pending',
-        payment_provider: cfg.provider,
-        payment_url: paymentUrl,
-        metadata: { product_name: product.name },
-      })
-      if (ordErr) throw new Error(`order insert failed: ${ordErr.message}`)
+      if (cfg.provider === 'manual_url') {
+        const { error: ordErr } = await db.from('orders').insert({
+          id: orderId,
+          account_id: product.account_id,
+          user_id: args.automation.user_id,
+          product_id: product.id,
+          contact_id: args.contactId,
+          price_cents: product.price_cents,
+          currency: product.currency,
+          quantity: 1,
+          status: 'pending',
+          payment_provider: paymentProvider,
+          payment_url: paymentUrl,
+          metadata: { product_name: product.name },
+        })
+        if (ordErr) throw new Error(`order insert failed: ${ordErr.message}`)
+      }
 
-      // Send the WhatsApp message with the product info + payment link.
       const text = interpolate(cfg.message_text, {
         ...args,
         context: {
@@ -690,6 +734,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
             order_id: orderId,
             product_name: product.name,
             payment_url: paymentUrl,
+            product_id: product.id,
           },
         },
       }) + (paymentUrl ? `\n\n${paymentUrl}` : '')
@@ -702,8 +747,6 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         text,
       })
 
-      // Carry the order_id forward so the payment verification condition
-      // (and downstream download step) can reference it.
       args.context.vars = {
         ...(args.context.vars ?? {}),
         order_id: orderId,

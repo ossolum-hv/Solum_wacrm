@@ -1558,7 +1558,7 @@ function StepEditor({
               className="w-full rounded-md border border-border bg-muted px-2 py-1.5 text-sm text-foreground"
             >
               <option value="manual_url">{t("config.providers.manual_url", { defaultValue: "Manual URL" })}</option>
-              <option value="stripe_checkout" disabled>{t("config.providers.stripe_checkout", { defaultValue: "Stripe Checkout (not configured)" })}</option>
+              <option value="stripe_checkout">{t("config.providers.stripe_checkout", { defaultValue: "Stripe Checkout" })}</option>
             </select>
           </FieldBlock>
           {cfg.provider === "manual_url" && (

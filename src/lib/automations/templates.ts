@@ -10,6 +10,9 @@ export type TemplateSlug =
   | 'out_of_office'
   | 'lead_qualifier'
   | 'follow_up_reminder'
+  | 'sales_order_flow'
+  | 'support_triage_flow'
+  | 'whatsapp_reply_menu'
 
 export interface TemplateStepSeed {
   step_type: AutomationStepType
@@ -121,6 +124,100 @@ export const AUTOMATION_TEMPLATES: Record<TemplateSlug, AutomationTemplateDefini
         step_config: {
           text:
             "Just circling back — did you have any other questions for us? Happy to help!",
+        },
+      },
+    ],
+  },
+  sales_order_flow: {
+    slug: 'sales_order_flow',
+    name: 'Sales Order Flow',
+    description: 'From keyword to product selection, checkout, and delivery follow-up.',
+    trigger_type: 'keyword_match',
+    trigger_config: {
+      keywords: ['buy', 'order', 'price', 'product', 'delivery'],
+      match_type: 'contains',
+    },
+    steps: [
+      {
+        step_type: 'send_message',
+        step_config: {
+          text:
+            'Thanks for reaching out! Tell us which product you want and we will send a secure checkout link to complete the order.',
+        },
+      },
+      {
+        step_type: 'send_payment_link',
+        step_config: {
+          product_id: '',
+          provider: 'stripe_checkout',
+          message_text:
+            'Thanks! Your order is ready. Complete your secure payment to confirm the purchase and we will prepare delivery.',
+          button_text: 'Pay now',
+        },
+      },
+      {
+        step_type: 'send_message',
+        step_config: {
+          text:
+            'Once payment is confirmed, our team will prepare the order and share delivery updates with you shortly.',
+        },
+      },
+    ],
+  },
+  support_triage_flow: {
+    slug: 'support_triage_flow',
+    name: 'Support Triage Flow',
+    description: 'Route support requests to the right queue with quick issue selection.',
+    trigger_type: 'keyword_match',
+    trigger_config: {
+      keywords: ['support', 'refund', 'cancel', 'return', 'payment'],
+      match_type: 'contains',
+    },
+    steps: [
+      {
+        step_type: 'send_message',
+        step_config: {
+          text:
+            'We can help with that. Please share your order number or the issue you are facing, and our support team will review it.',
+        },
+      },
+      {
+        step_type: 'send_buttons',
+        step_config: {
+          kind: 'buttons',
+          body: 'What do you need help with?',
+          header: 'Support',
+          buttons: [
+            { id: 'refund_request', title: 'Refund' },
+            { id: 'order_issue', title: 'Delivery' },
+            { id: 'general_support', title: 'General' },
+          ],
+        },
+      },
+      {
+        step_type: 'assign_conversation',
+        step_config: { mode: 'round_robin' },
+      },
+    ],
+  },
+  whatsapp_reply_menu: {
+    slug: 'whatsapp_reply_menu',
+    name: 'WhatsApp Reply Menu',
+    description: 'Offer quick options for sales, support, and order status replies.',
+    trigger_type: 'new_message_received',
+    trigger_config: {},
+    steps: [
+      {
+        step_type: 'send_buttons',
+        step_config: {
+          kind: 'buttons',
+          body: 'Hi! How can we help today?',
+          header: 'Quick options',
+          buttons: [
+            { id: 'get_quote', title: 'Get quote' },
+            { id: 'support', title: 'Support' },
+            { id: 'order_status', title: 'Order status' },
+          ],
         },
       },
     ],
