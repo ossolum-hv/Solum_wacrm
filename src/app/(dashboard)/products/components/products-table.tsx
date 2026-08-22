@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/currency";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { CreditCard, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -25,6 +25,7 @@ interface ProductsTableProps {
   products: Product[];
   onEdit: (product: Product) => void;
   onDelete: (product: Product) => void;
+  onCheckout: (product: Product) => void;
   canEdit: boolean;
 }
 
@@ -32,6 +33,7 @@ export function ProductsTable({
   products,
   onEdit,
   onDelete,
+  onCheckout,
   canEdit,
 }: ProductsTableProps) {
   const t = useTranslations("Products.table");
@@ -124,6 +126,13 @@ export function ProductsTable({
                       >
                         <Pencil className="h-4 w-4" />
                         {tPage("editAction")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => onCheckout(product)}
+                        className="flex items-center gap-2 text-popover-foreground focus:bg-accent focus:text-accent-foreground"
+                      >
+                        <CreditCard className="h-4 w-4" />
+                        Checkout
                       </DropdownMenuItem>
                       <DropdownMenuSeparator className="bg-border" />
                       <DropdownMenuItem

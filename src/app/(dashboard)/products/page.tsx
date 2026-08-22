@@ -168,6 +168,31 @@ export default function ProductsPage() {
     }
   };
 
+  const handleCheckout = async (product: Product) => {
+    try {
+      const response = await fetch(`/api/products/${product.id}/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quantity: 1 }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Failed to create checkout session");
+      }
+
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+        return;
+      }
+
+      toast.success("Checkout session created");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to start checkout";
+      toast.error(message);
+    }
+  };
+
   const handleSaved = () => {
     fetchProducts();
   };
@@ -251,6 +276,7 @@ export default function ProductsPage() {
             products={products}
             onEdit={openEditForm}
             onDelete={handleDeleteClick}
+            onCheckout={handleCheckout}
             canEdit={canEdit}
           />
         )}
