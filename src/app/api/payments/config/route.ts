@@ -33,8 +33,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid JSON payload.' }, { status: 400 });
     }
 
-    const provider = body.provider;
-    if (provider !== 'stripe') {
+    const provider = typeof body.provider === 'string' ? body.provider.trim().toLowerCase() : 'stripe';
+    const supportedProviders = ['stripe', 'razorpay', 'payu'] as const;
+    if (!supportedProviders.includes(provider as (typeof supportedProviders)[number])) {
       return NextResponse.json({ error: 'Unsupported payment provider.' }, { status: 400 });
     }
 
@@ -47,11 +48,11 @@ export async function POST(request: Request) {
     const currency = typeof body.currency === 'string' ? body.currency.trim().toUpperCase() || 'USD' : 'USD';
 
     if (enabled && !secretKey) {
-      return NextResponse.json({ error: 'A Stripe secret key is required before enabling checkout.' }, { status: 400 });
+      return NextResponse.json({ error: `A ${provider} secret key is required before enabling checkout.` }, { status: 400 });
     }
 
     const config = {
-      provider: 'stripe' as const,
+      provider: provider as (typeof supportedProviders)[number],
       enabled,
       publishableKey,
       secretKey,

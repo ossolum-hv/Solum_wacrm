@@ -9,11 +9,20 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { SettingsPanelHead } from './settings-panel-head';
 
+type PaymentProvider = 'stripe' | 'razorpay' | 'payu';
+
 interface PaymentGatewayConfig {
-  provider: 'stripe';
+  provider: PaymentProvider;
   enabled: boolean;
   publishableKey?: string;
   secretKey?: string;
@@ -35,6 +44,42 @@ const initialConfig: PaymentGatewayConfig = {
   currency: 'USD',
   testMode: true,
 };
+
+const paymentProviderLabels: Record<PaymentProvider, string> = {
+  stripe: 'Stripe',
+  razorpay: 'Razorpay',
+  payu: 'PayU',
+};
+
+function getProviderFieldLabels(provider: PaymentProvider) {
+  if (provider === 'razorpay') {
+    return {
+      publishable: 'Key ID',
+      secret: 'Key Secret',
+      webhook: 'Webhook secret',
+      success: 'Success URL',
+      cancel: 'Cancel URL',
+    };
+  }
+
+  if (provider === 'payu') {
+    return {
+      publishable: 'Merchant key',
+      secret: 'Salt / secret key',
+      webhook: 'Webhook secret',
+      success: 'Success URL',
+      cancel: 'Cancel URL',
+    };
+  }
+
+  return {
+    publishable: 'Publishable key',
+    secret: 'Secret key',
+    webhook: 'Webhook secret',
+    success: 'Success URL',
+    cancel: 'Cancel URL',
+  };
+}
 
 export function PaymentGatewaySettings() {
   const [loading, setLoading] = useState(true);
@@ -111,18 +156,20 @@ export function PaymentGatewaySettings() {
         throw new Error(payload.error || 'Checkout creation failed.');
       }
       window.open(payload.url, '_blank', 'noopener,noreferrer');
-      toast.success('Stripe checkout session created.');
+      toast.success(`${paymentProviderLabels[config.provider]} checkout session created.`);
     } catch (error) {
       console.error('[PaymentGatewaySettings] checkout error:', error);
-      toast.error(error instanceof Error ? error.message : 'Stripe checkout failed.');
+      toast.error(error instanceof Error ? error.message : `${paymentProviderLabels[config.provider]} checkout failed.`);
     }
   };
+
+  const providerLabels = getProviderFieldLabels(config.provider);
 
   return (
     <div className="space-y-6">
       <SettingsPanelHead
         title="Payment gateway"
-        description="Connect your payment provider for Stripe checkout, product purchases, and payment links."
+        description="Connect your payment provider for checkout, product purchases, and payment links."
       />
 
       <Card>
@@ -131,9 +178,11 @@ export function PaymentGatewaySettings() {
             <div>
               <CardTitle className="flex items-center gap-2">
                 <WalletCards className="h-4 w-4" />
-                Stripe configuration
+                {paymentProviderLabels[config.provider]} configuration
               </CardTitle>
-              <CardDescription>Enable checkout and payment links using a Stripe account.</CardDescription>
+              <CardDescription>
+                Enable checkout and payment links using {paymentProviderLabels[config.provider]}.
+              </CardDescription>
             </div>
             <Badge variant={config.enabled ? 'default' : 'outline'}>
               {config.enabled ? 'Enabled' : 'Disabled'}
@@ -144,7 +193,9 @@ export function PaymentGatewaySettings() {
           <div className="flex items-center justify-between rounded-md border border-border bg-muted/25 p-3">
             <div>
               <div className="font-medium">Provider status</div>
-              <div className="text-sm text-muted-foreground">Live Stripe configuration and checkout availability.</div>
+              <div className="text-sm text-muted-foreground">
+                {paymentProviderLabels[config.provider]} configuration and checkout availability.
+              </div>
             </div>
             <div className="flex items-center gap-2 text-sm">
               {config.enabled ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <ShieldCheck className="h-4 w-4 text-muted-foreground" />}
@@ -162,45 +213,62 @@ export function PaymentGatewaySettings() {
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
                   <Label>Provider</Label>
-                  <div className="flex h-10 items-center rounded-md border border-input bg-muted/30 px-3 text-sm text-muted-foreground">
-                    Stripe
-                  </div>
+                  <Select
+                    value={config.provider}
+                    onValueChange={(value) => {
+                      setConfig((prev) => ({
+                        ...prev,
+                        provider: value as PaymentProvider,
+                      }));
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select a provider" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="stripe">Stripe</SelectItem>
+                      <SelectItem value="razorpay">Razorpay</SelectItem>
+                      <SelectItem value="payu">PayU</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="publishable-key">Publishable key</Label>
+                  <Label htmlFor="publishable-key">{providerLabels.publishable}</Label>
                   <Input
                     id="publishable-key"
                     value={config.publishableKey || ''}
                     onChange={(event) => setConfig((prev) => ({ ...prev, publishableKey: event.target.value }))}
-                    placeholder="pk_live_... or pk_test_..."
+                    placeholder={config.provider === 'stripe' ? 'pk_live_... or pk_test_...' : 'Enter your gateway key ID'}
                   />
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="secret-key">Secret key</Label>
+                  <Label htmlFor="secret-key">{providerLabels.secret}</Label>
                   <Input
                     id="secret-key"
                     type="password"
                     value={config.secretKey || ''}
                     onChange={(event) => setConfig((prev) => ({ ...prev, secretKey: event.target.value }))}
-                    placeholder="sk_live_... or sk_test_..."
+                    placeholder={config.provider === 'stripe' ? 'sk_live_... or sk_test_...' : 'Enter your gateway secret'}
                   />
                 </div>
 
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="webhook-secret">Webhook secret</Label>
-                  <Input
-                    id="webhook-secret"
-                    type="password"
-                    value={config.webhookSecret || ''}
-                    onChange={(event) => setConfig((prev) => ({ ...prev, webhookSecret: event.target.value }))}
-                    placeholder="whsec_..."
-                  />
-                </div>
+                {config.provider === 'stripe' && (
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="webhook-secret">{providerLabels.webhook}</Label>
+                    <Input
+                      id="webhook-secret"
+                      type="password"
+                      value={config.webhookSecret || ''}
+                      onChange={(event) => setConfig((prev) => ({ ...prev, webhookSecret: event.target.value }))}
+                      placeholder="whsec_..."
+                    />
+                  </div>
+                )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="success-url">Success URL</Label>
+                  <Label htmlFor="success-url">{providerLabels.success}</Label>
                   <Input
                     id="success-url"
                     value={config.successUrl || ''}
@@ -210,7 +278,7 @@ export function PaymentGatewaySettings() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="cancel-url">Cancel URL</Label>
+                  <Label htmlFor="cancel-url">{providerLabels.cancel}</Label>
                   <Input
                     id="cancel-url"
                     value={config.cancelUrl || ''}
@@ -240,7 +308,9 @@ export function PaymentGatewaySettings() {
               <div className="flex items-center justify-between rounded-md border border-border bg-muted/25 p-3">
                 <div>
                   <div className="font-medium">Gateway enabled</div>
-                  <div className="text-sm text-muted-foreground">Allow Stripe checkout sessions to be created from the app.</div>
+                  <div className="text-sm text-muted-foreground">
+                    Allow {paymentProviderLabels[config.provider]} checkout sessions to be created from the app.
+                  </div>
                 </div>
                 <Switch
                   checked={config.enabled}

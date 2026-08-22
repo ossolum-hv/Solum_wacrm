@@ -1,6 +1,6 @@
 import Stripe from 'stripe';
 
-export type PaymentProvider = 'stripe';
+export type PaymentProvider = 'stripe' | 'razorpay' | 'payu';
 
 export interface PaymentGatewayConfig {
   provider: PaymentProvider;
