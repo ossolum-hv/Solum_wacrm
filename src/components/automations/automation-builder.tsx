@@ -1564,6 +1564,7 @@ function StepEditor({
             >
               <option value="manual_url">{t("config.providers.manual_url", { defaultValue: "Manual URL" })}</option>
               <option value="stripe_checkout">{t("config.providers.stripe_checkout", { defaultValue: "Stripe Checkout" })}</option>
+              <option value="razorpay_checkout">{t("config.providers.razorpay_checkout", { defaultValue: "Razorpay Checkout" })}</option>
               <option value="cashfree_whatsapp">{t("config.providers.cashfree_whatsapp", { defaultValue: "Cashfree WhatsApp Payment Link" })}</option>
             </select>
           </FieldBlock>

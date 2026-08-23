@@ -27,6 +27,7 @@ import { engineSendText, engineSendTemplate, engineSendInteractive } from './met
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { sendMessageToConversation } from '@/lib/whatsapp/send-message'
 import { createCashfreePaymentLink } from '@/lib/payments/cashfree'
+import { createRazorpayPaymentLink } from '@/lib/payments/razorpay'
 import { createStripeCheckoutSession } from '@/lib/payments/stripe'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
 
@@ -658,8 +659,14 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!product.is_active) throw new Error('send_payment_link: product is inactive')
 
       let paymentUrl = ''
-      let paymentProvider: 'stripe' | 'cashfree' | 'manual_url' =
-        cfg.provider === 'stripe_checkout' ? 'stripe' : cfg.provider === 'cashfree_whatsapp' ? 'cashfree' : 'manual_url'
+      let paymentProvider: 'stripe' | 'razorpay' | 'cashfree' | 'manual_url' =
+        cfg.provider === 'stripe_checkout'
+          ? 'stripe'
+          : cfg.provider === 'razorpay_checkout'
+            ? 'razorpay'
+            : cfg.provider === 'cashfree_whatsapp'
+              ? 'cashfree'
+              : 'manual_url'
       const orderId =
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
@@ -724,6 +731,48 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
               },
             })
             if (ordErr) throw new Error(`order insert failed: ${ordErr.message}`)
+          } else if (cfg.provider === 'razorpay_checkout') {
+            const razorpayLink = await createRazorpayPaymentLink({
+              orderId,
+              amountCents: product.price_cents,
+              productName: product.name,
+              currency: product.currency || 'INR',
+              customerEmail: contact?.email ?? undefined,
+              customerPhone: contact?.phone ?? undefined,
+              customerName: contact?.name ?? undefined,
+              successUrl,
+              cancelUrl,
+              notes: {
+                order_id: orderId,
+                product_id: product.id,
+                account_id: args.automation.account_id,
+                contact_id: args.contactId,
+              },
+            })
+            paymentUrl = razorpayLink.url
+            paymentProvider = 'razorpay'
+
+            const { error: ordErr } = await db.from('orders').insert({
+              id: orderId,
+              account_id: product.account_id,
+              user_id: args.automation.user_id,
+              product_id: product.id,
+              contact_id: args.contactId,
+              price_cents: product.price_cents,
+              currency: product.currency,
+              quantity: 1,
+              status: 'pending',
+              payment_provider: paymentProvider,
+              payment_url: paymentUrl,
+              payment_intent_id: razorpayLink.id,
+              metadata: {
+                product_name: product.name,
+                checkout_source: 'automation_checkout',
+                razorpay_payment_link_id: razorpayLink.id,
+                razorpay_short_url: paymentUrl,
+              },
+            })
+            if (ordErr) throw new Error(`order insert failed: ${ordErr.message}`)
           } else {
             const session = await createStripeCheckoutSession({
               amountCents: product.price_cents,
@@ -767,7 +816,12 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
           }
         } catch (providerErr) {
           const message = providerErr instanceof Error ? providerErr.message : String(providerErr)
-          const providerName = cfg.provider === 'cashfree_whatsapp' ? 'cashfree_whatsapp' : 'stripe_checkout'
+          const providerName =
+            cfg.provider === 'cashfree_whatsapp'
+              ? 'cashfree_whatsapp'
+              : cfg.provider === 'razorpay_checkout'
+                ? 'razorpay_checkout'
+                : 'stripe_checkout'
           throw new Error(`${providerName} failed: ${message}`)
         }
       }

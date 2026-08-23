@@ -19,7 +19,7 @@ export function resolvePaymentGatewayConfig(): PaymentGatewayConfig | null {
   const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim() || process.env.STRIPE_PUBLISHABLE_KEY?.trim();
   const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
   const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
-  const razorpayKeyId = process.env.RAZORPAY_KEY_ID?.trim();
+  const razorpayKeyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID?.trim() || process.env.RAZORPAY_KEY_ID?.trim();
   const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
   const razorpayWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET?.trim();
   const cashfreeAppId = process.env.CASHFREE_APP_ID?.trim();

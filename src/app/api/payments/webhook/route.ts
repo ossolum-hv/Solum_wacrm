@@ -103,7 +103,12 @@ export async function POST(request: Request) {
       const notes = payment?.notes || order?.notes || {};
       const orderId = notes.order_id || notes.orderId;
 
-      if (eventName === 'payment.captured' || eventName === 'payment.authorized' || eventName === 'order.paid') {
+      if (
+        eventName === 'payment.captured' ||
+        eventName === 'payment.authorized' ||
+        eventName === 'payment_link.paid' ||
+        eventName === 'order.paid'
+      ) {
         if (orderId) {
           await admin
             .from('orders')

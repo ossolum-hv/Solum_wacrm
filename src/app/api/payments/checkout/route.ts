@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { createRazorpayOrder } from '@/lib/payments/razorpay';
+import { createRazorpayOrder, createRazorpayPaymentLink } from '@/lib/payments/razorpay';
 import { createStripeCheckoutSession } from '@/lib/payments/stripe';
 
 export async function POST(request: Request) {
@@ -31,12 +31,24 @@ export async function POST(request: Request) {
         notes: { product_name: productName, source: 'app_checkout', customer_email: customerEmail || '' },
       });
 
+      const paymentLink = await createRazorpayPaymentLink({
+        orderId: order.id,
+        amountCents,
+        productName,
+        currency,
+        customerEmail,
+        description: productName,
+        notes: { product_name: productName, source: 'app_checkout', customer_email: customerEmail || '' },
+      });
+
       return NextResponse.json({
         provider: 'razorpay',
         key: order.keyId,
-        id: order.id,
+        id: paymentLink.id,
+        orderId: order.id,
         amount: order.amount,
         currency: order.currency,
+        url: paymentLink.url,
         status: 'created',
       });
     }

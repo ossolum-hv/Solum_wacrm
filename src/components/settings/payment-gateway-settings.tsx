@@ -268,7 +268,7 @@ export function PaymentGatewaySettings() {
                   />
                 </div>
 
-                {(config.provider === 'stripe' || config.provider === 'cashfree') && (
+                {(config.provider === 'stripe' || config.provider === 'razorpay' || config.provider === 'cashfree') && (
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="webhook-secret">{providerLabels.webhook}</Label>
                     <Input
@@ -276,7 +276,13 @@ export function PaymentGatewaySettings() {
                       type="password"
                       value={config.webhookSecret || ''}
                       onChange={(event) => setConfig((prev) => ({ ...prev, webhookSecret: event.target.value }))}
-                      placeholder={config.provider === 'cashfree' ? 'Cashfree webhook secret' : 'whsec_...'}
+                      placeholder={
+                        config.provider === 'cashfree'
+                          ? 'Cashfree webhook secret'
+                          : config.provider === 'razorpay'
+                            ? 'Razorpay webhook secret'
+                            : 'whsec_...'
+                      }
                     />
                   </div>
                 )}

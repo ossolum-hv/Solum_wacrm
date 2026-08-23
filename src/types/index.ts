@@ -734,8 +734,8 @@ export interface Order {
 
 export interface SendPaymentLinkStepConfig {
   product_id: string;
-  /** 'stripe_checkout' | 'cashfree_whatsapp' | 'manual_url' */
-  provider: 'stripe_checkout' | 'cashfree_whatsapp' | 'manual_url';
+  /** 'stripe_checkout' | 'razorpay_checkout' | 'cashfree_whatsapp' | 'manual_url' */
+  provider: 'stripe_checkout' | 'razorpay_checkout' | 'cashfree_whatsapp' | 'manual_url';
   /** Used when provider === 'manual_url' — supports {{vars.*}} interpolation */
   manual_url_template?: string;
   /** Required for Cashfree WhatsApp links. Stored alongside the automation config. */
