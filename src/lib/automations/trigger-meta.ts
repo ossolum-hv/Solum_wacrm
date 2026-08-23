@@ -19,6 +19,10 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
     label: 'Keyword Match',
     pillClass: 'border-purple-500/30 bg-purple-500/10 text-purple-300',
   },
+  order_paid: {
+    label: 'Order Paid',
+    pillClass: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+  },
   new_contact_created: {
     label: 'New Contact',
     pillClass: 'border-primary/30 bg-primary/10 text-primary',

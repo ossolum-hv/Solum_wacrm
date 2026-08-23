@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+import { runAutomationsForTrigger } from '@/lib/automations/engine';
 import { verifyRazorpayWebhook } from '@/lib/payments/razorpay';
 import { verifyStripeWebhook } from '@/lib/payments/stripe';
 
@@ -75,6 +76,12 @@ export async function POST(request: Request) {
       if (eventType === 'checkout.session.completed' || eventType === 'checkout.session.async_payment_succeeded') {
         if (orderId) {
           const fulfillment = await resolveOrderFulfillmentState(admin, orderId);
+          const { data: orderRow, error: orderReadErr } = await admin
+            .from('orders')
+            .select('id, account_id, contact_id, product_id')
+            .eq('id', orderId)
+            .maybeSingle();
+
           await admin
             .from('orders')
             .update({
@@ -91,6 +98,22 @@ export async function POST(request: Request) {
               },
             })
             .eq('id', orderId);
+
+          if (!orderReadErr && orderRow) {
+            await runAutomationsForTrigger({
+              accountId: orderRow.account_id,
+              triggerType: 'order_paid',
+              contactId: orderRow.contact_id,
+              context: {
+                order_id: orderRow.id,
+                product_id: orderRow.product_id,
+                vars: {
+                  order_id: orderRow.id,
+                  product_id: orderRow.product_id,
+                },
+              },
+            });
+          }
         }
         return NextResponse.json({ received: true }, { status: 200 });
       }
@@ -156,6 +179,12 @@ export async function POST(request: Request) {
       ) {
         if (orderId) {
           const fulfillment = await resolveOrderFulfillmentState(admin, orderId);
+          const { data: orderRow, error: orderReadErr } = await admin
+            .from('orders')
+            .select('id, account_id, contact_id, product_id')
+            .eq('id', orderId)
+            .maybeSingle();
+
           await admin
             .from('orders')
             .update({
@@ -173,6 +202,22 @@ export async function POST(request: Request) {
               },
             })
             .eq('id', orderId);
+
+          if (!orderReadErr && orderRow) {
+            await runAutomationsForTrigger({
+              accountId: orderRow.account_id,
+              triggerType: 'order_paid',
+              contactId: orderRow.contact_id,
+              context: {
+                order_id: orderRow.id,
+                product_id: orderRow.product_id,
+                vars: {
+                  order_id: orderRow.id,
+                  product_id: orderRow.product_id,
+                },
+              },
+            });
+          }
         }
         return NextResponse.json({ received: true }, { status: 200 });
       }

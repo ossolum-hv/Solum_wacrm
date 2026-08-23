@@ -40,6 +40,10 @@ export interface AutomationContext {
   message_text?: string
   /** Conversation the event belongs to, if any. */
   conversation_id?: string
+  /** Order id for order_paid-triggered automations. */
+  order_id?: string
+  /** Product id for order-paid delivery flows. */
+  product_id?: string
   /** Arbitrary variables accumulated during execution. */
   vars?: Record<string, unknown>
   /** The tag id that was added, for tag_added trigger. */
@@ -1046,6 +1050,11 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
     const cfg = automation.trigger_config as TagTriggerConfig
     const tagId = ctx?.tag_id
     return Boolean(tagId && cfg?.tag_id && cfg.tag_id === tagId)
+  }
+
+  if (automation.trigger_type === 'order_paid') {
+    const orderId = ctx?.order_id ?? (ctx?.vars?.order_id as string | undefined)
+    return Boolean(orderId)
   }
 
   return true

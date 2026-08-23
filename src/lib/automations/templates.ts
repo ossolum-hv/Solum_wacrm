@@ -131,54 +131,24 @@ export const AUTOMATION_TEMPLATES: Record<TemplateSlug, AutomationTemplateDefini
   sales_order_flow: {
     slug: 'sales_order_flow',
     name: 'Sales Order Flow',
-    description: 'Keyword → checkout → payment confirmation → delivery or digital handoff.',
-    trigger_type: 'keyword_match',
-    trigger_config: {
-      keywords: ['buy', 'order', 'purchase', 'price', 'delivery'],
-      match_type: 'contains',
-    },
+    description: 'Payment success → delivery/digital handoff for paid orders.',
+    trigger_type: 'order_paid',
+    trigger_config: {},
     steps: [
       {
         step_type: 'send_message',
         step_config: {
           text:
-            'Thanks for your interest! We can help you place the order. Please complete the secure checkout below to confirm your purchase.',
+            'Payment confirmed! We have started processing your order and will share delivery details as soon as it is dispatched.',
         },
       },
       {
-        step_type: 'send_payment_link',
+        step_type: 'send_download_link',
         step_config: {
           product_id: '',
-          provider: 'stripe_checkout',
           message_text:
-            'Your order is ready. Complete your payment now and we will confirm the order immediately.',
-          button_text: 'Pay now',
+            'Your payment is confirmed — here is your delivery link: {{vars.download_url}}',
         },
-      },
-      {
-        step_type: 'condition',
-        step_config: {
-          subject: 'payment_status',
-          operand: 'paid',
-        },
-      },
-      {
-        step_type: 'send_message',
-        step_config: {
-          text:
-            'Payment confirmed! We have started processing your order and will share the delivery details as soon as it is dispatched.',
-        },
-        parent_index: 2,
-        branch: 'yes',
-      },
-      {
-        step_type: 'send_message',
-        step_config: {
-          text:
-            'We are still waiting for payment confirmation. Please complete the checkout link to continue your order.',
-        },
-        parent_index: 2,
-        branch: 'no',
       },
     ],
   },

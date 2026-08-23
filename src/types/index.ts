@@ -459,6 +459,7 @@ export type AutomationTriggerType =
   | 'new_message_received'
   | 'first_inbound_message'
   | 'keyword_match'
+  | 'order_paid'
   | 'new_contact_created'
   | 'conversation_assigned'
   | 'tag_added'

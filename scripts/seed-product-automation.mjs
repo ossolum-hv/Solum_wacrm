@@ -79,7 +79,7 @@ async function main() {
   }
   console.log(`Using account=${accountId} owner=${ownerId} product=${productId}`)
 
-  // 3. Read product type so the success branch reflects whether this is a digital handoff or a delivery update.
+  // 3. Read product type so the order-paid follow-up reflects whether this is a digital handoff or a delivery update.
   const { data: productRow } = await supabase
     .from('products')
     .select('type, name')
@@ -88,33 +88,28 @@ async function main() {
 
   const isDigital = productRow?.type === 'digital'
 
-  // 4. Build automation + steps.
-  const { data: automation, error: insErr } = await supabase
+  // 4. Create the keyword automation that sends the payment link.
+  const { data: intakeAutomation, error: intakeErr } = await supabase
     .from('automations')
     .insert({
       account_id: accountId,
       user_id: ownerId,
-      name: isDigital ? 'Digital Sales Flow' : 'Product Sales Flow',
-      description: isDigital
-        ? 'Keyword → checkout → payment confirmation → digital delivery.'
-        : 'Keyword → checkout → payment confirmation → order dispatch + delivery update.',
+      name: isDigital ? 'Digital Order Intake' : 'Product Order Intake',
+      description:
+        'Keyword trigger that sends a secure payment link so the customer can complete the sale.',
       trigger_type: 'keyword_match',
       trigger_config: { keywords: KEYWORDS, match_type: 'contains', case_sensitive: false },
       is_active: true,
     })
     .select()
     .single()
-  if (insErr || !automation) {
-    console.error('Automation insert failed:', insErr?.message)
+  if (intakeErr || !intakeAutomation) {
+    console.error('Intake automation insert failed:', intakeErr?.message)
     process.exit(1)
   }
-  const automationId = automation.id
 
-  const successMessage = isDigital
-    ? 'Payment confirmed! Your order is being processed and your digital delivery is ready to be sent.'
-    : 'Payment confirmed! Your order is being prepared for dispatch and we will share delivery updates as soon as it is on the way.'
-
-  const steps = [
+  const intakeId = intakeAutomation.id
+  const intakeSteps = [
     {
       step_type: 'send_message',
       step_config: {
@@ -132,60 +127,74 @@ async function main() {
         button_text: 'Pay Now',
       },
     },
-    {
-      step_type: 'condition',
-      step_config: { subject: 'payment_status', operand: 'paid', value: '' },
-      branches: {
-        yes: [
-          ...(isDigital
-            ? [
-                {
-                  step_type: 'send_message',
-                  step_config: {
-                    text: successMessage,
-                  },
-                },
-                {
-                  step_type: 'send_download_link',
-                  step_config: {
-                    product_id: productId,
-                    message_text:
-                      'Your payment is confirmed — here is your delivery link: {{vars.download_url}}',
-                  },
-                },
-              ]
-            : [
-                {
-                  step_type: 'send_message',
-                  step_config: {
-                    text: successMessage,
-                  },
-                },
-              ]),
-        ],
-        no: [
-          {
-            step_type: 'send_message',
-            step_config: {
-              text: "We haven't received your payment yet. Please complete the checkout link to continue your order.",
-            },
-          },
-        ],
-      },
-    },
   ]
 
-  const { error: stepsErr } = await supabase.from('automation_steps').insert(
-    flatten(steps, automationId, null, null, 0),
+  const { error: intakeStepsErr } = await supabase.from('automation_steps').insert(
+    flatten(intakeSteps, intakeId, null, null, 0),
   )
-  if (stepsErr) {
-    console.error('Steps insert failed:', stepsErr.message)
+  if (intakeStepsErr) {
+    console.error('Intake steps insert failed:', intakeStepsErr.message)
     process.exit(1)
   }
 
-  console.log('✅ Created automation', automationId)
-  console.log('   Trigger: keyword_match', KEYWORDS)
-  console.log('   Steps: send_payment_link → condition(payment_status) → yes: send_download_link / no: send_message')
+  // 5. Create the paid-order automation that sends the delivery/download follow-up after payment success.
+  const successMessage = isDigital
+    ? 'Payment confirmed! Your digital order is ready to be delivered.'
+    : 'Payment confirmed! Your order is being prepared for dispatch and we will share delivery updates as soon as it is on the way.'
+
+  const { data: paidAutomation, error: paidErr } = await supabase
+    .from('automations')
+    .insert({
+      account_id: accountId,
+      user_id: ownerId,
+      name: isDigital ? 'Digital Delivery Flow' : 'Sales Delivery Flow',
+      description: isDigital
+        ? 'When an order is successfully paid, send the digital delivery link.'
+        : 'When an order is successfully paid, confirm the sale and send the delivery update.',
+      trigger_type: 'order_paid',
+      trigger_config: {},
+      is_active: true,
+    })
+    .select()
+    .single()
+  if (paidErr || !paidAutomation) {
+    console.error('Paid-order automation insert failed:', paidErr?.message)
+    process.exit(1)
+  }
+
+  const paidId = paidAutomation.id
+  const paidSteps = [
+    {
+      step_type: 'send_message',
+      step_config: {
+        text: successMessage,
+      },
+    },
+    ...(isDigital
+      ? [
+          {
+            step_type: 'send_download_link',
+            step_config: {
+              product_id: productId,
+              message_text: 'Your payment is confirmed — here is your delivery link: {{vars.download_url}}',
+            },
+          },
+        ]
+      : []),
+  ]
+
+  const { error: paidStepsErr } = await supabase.from('automation_steps').insert(
+    flatten(paidSteps, paidId, null, null, 0),
+  )
+  if (paidStepsErr) {
+    console.error('Paid-order steps insert failed:', paidStepsErr.message)
+    process.exit(1)
+  }
+
+  console.log('✅ Created keyword automation', intakeId)
+  console.log('✅ Created paid-order delivery automation', paidId)
+  console.log('   Trigger: keyword_match -> send_payment_link')
+  console.log('   Trigger: order_paid -> send delivery / digital download')
 }
 
 function flatten(

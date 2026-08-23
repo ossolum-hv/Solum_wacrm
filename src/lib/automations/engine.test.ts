@@ -121,6 +121,26 @@ beforeEach(() => {
   h.state.logUpdates = [];
 });
 
+describe("triggerMatches — paid-order trigger", () => {
+  it("matches when the webhook includes an order id", () => {
+    expect(
+      triggerMatches(
+        { id: "a1", account_id: ACCOUNT, user_id: "u1", name: "paid", trigger_type: "order_paid", trigger_config: {}, is_active: true, execution_count: 0, created_at: "", updated_at: "" },
+        { order_id: "ord_123", vars: { order_id: "ord_123" } },
+      ),
+    ).toBe(true);
+  });
+
+  it("ignores a missing order context", () => {
+    expect(
+      triggerMatches(
+        { id: "a1", account_id: ACCOUNT, user_id: "u1", name: "paid", trigger_type: "order_paid", trigger_config: {}, is_active: true, execution_count: 0, created_at: "", updated_at: "" },
+        {},
+      ),
+    ).toBe(false);
+  });
+});
+
 describe("runAutomationsForTrigger — tenant isolation", () => {
   it("refuses to dispatch when the contact is not in the account (GHSA-63cv-2c49-m5v3)", async () => {
     // Ownership lookup returns nothing — the contact belongs to another tenant.
