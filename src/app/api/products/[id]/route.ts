@@ -56,7 +56,8 @@ export async function PUT(
       is_active,
       sort_order,
       metadata,
-    } = body as Partial<Product>;
+      qr_image_url,
+    } = body as Partial<Product> & { qr_image_url?: string };
 
     const updatePayload: Partial<Product> = {};
 
@@ -87,7 +88,16 @@ export async function PUT(
     if (requires_shipping !== undefined) updatePayload.requires_shipping = requires_shipping;
     if (is_active !== undefined) updatePayload.is_active = is_active;
     if (sort_order !== undefined) updatePayload.sort_order = sort_order;
-    if (metadata !== undefined) updatePayload.metadata = metadata;
+    if (metadata !== undefined || qr_image_url !== undefined) {
+      const mergedMetadata = { ...((metadata ?? {}) as Record<string, unknown>) };
+      const resolvedQrImageUrl = typeof qr_image_url === 'string' ? qr_image_url.trim() : typeof metadata?.qr_image_url === 'string' ? String(metadata.qr_image_url).trim() : '';
+      if (resolvedQrImageUrl) {
+        mergedMetadata.qr_image_url = resolvedQrImageUrl;
+      } else if ('qr_image_url' in mergedMetadata) {
+        delete mergedMetadata.qr_image_url;
+      }
+      updatePayload.metadata = mergedMetadata;
+    }
 
     updatePayload.updated_at = new Date().toISOString();
 

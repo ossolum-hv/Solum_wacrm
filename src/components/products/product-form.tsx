@@ -47,6 +47,7 @@ export function ProductForm({
   const [currency, setCurrency] = useState('USD');
   const [digitalFileUrl, setDigitalFileUrl] = useState('');
   const [digitalFileName, setDigitalFileName] = useState('');
+  const [qrImageUrl, setQrImageUrl] = useState('');
   const [sku, setSku] = useState('');
   const [weightGrams, setWeightGrams] = useState('');
   const [requiresShipping, setRequiresShipping] = useState(true);
@@ -67,6 +68,7 @@ export function ProductForm({
         setCurrency(product.currency);
         setDigitalFileUrl(product.digital_file_url ?? '');
         setDigitalFileName(product.digital_file_name ?? '');
+        setQrImageUrl((product.metadata as Record<string, unknown> | undefined)?.qr_image_url as string | undefined ?? '');
         setSku(product.sku ?? '');
         setWeightGrams(product.weight_grams?.toString() ?? '');
         setRequiresShipping(product.requires_shipping);
@@ -80,6 +82,7 @@ export function ProductForm({
         setCurrency('USD');
         setDigitalFileUrl('');
         setDigitalFileName('');
+        setQrImageUrl('');
         setSku('');
         setWeightGrams('');
         setRequiresShipping(true);
@@ -116,6 +119,16 @@ async function handleSubmit(e: React.FormEvent) {
       if (!user) throw new Error('Not authenticated');
       if (!accountId) throw new Error('Your profile is not linked to an account.');
 
+      const metadata = {
+        ...(product?.metadata ?? {}),
+      } as Record<string, unknown>;
+      const normalizedQrImageUrl = qrImageUrl.trim();
+      if (normalizedQrImageUrl) {
+        metadata.qr_image_url = normalizedQrImageUrl;
+      } else {
+        delete metadata.qr_image_url;
+      }
+
       const payload = {
         account_id: accountId,
         user_id: user.id,
@@ -131,7 +144,8 @@ async function handleSubmit(e: React.FormEvent) {
         requires_shipping: isPhysical ? requiresShipping : false,
         is_active: isActive,
         sort_order: sortOrder,
-        metadata: {},
+        metadata,
+        qr_image_url: normalizedQrImageUrl || undefined,
       };
 
       let url = '/api/products';
@@ -330,6 +344,18 @@ return (
               </div>
             </div>
           )}
+
+          <div className="grid gap-2 border rounded-lg p-4 bg-muted/30">
+            <h4 className="text-sm font-medium">Payment QR image</h4>
+            <Label htmlFor="qr_image_url">QR code image URL</Label>
+            <Input
+              id="qr_image_url"
+              type="url"
+              value={qrImageUrl}
+              onChange={(e) => setQrImageUrl(e.target.value)}
+              placeholder="https://your-domain.com/qr/your-product.png"
+            />
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="flex items-center gap-2">

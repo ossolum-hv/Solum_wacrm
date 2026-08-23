@@ -472,6 +472,7 @@ export type AutomationStepType =
   | 'send_buttons'
   | 'send_list'
   | 'send_template'
+  | 'send_media'
   | 'add_tag'
   | 'remove_tag'
   | 'assign_conversation'
@@ -541,6 +542,13 @@ export interface SendTemplateStepConfig {
   variables?: Record<string, string>;
 }
 
+export interface SendMediaStepConfig {
+  media_url: string;
+  media_type?: 'image' | 'video' | 'document' | 'audio';
+  caption?: string;
+  file_name?: string;
+}
+
 export interface TagStepConfig {
   tag_id: string;
 }
@@ -601,6 +609,7 @@ export type AutomationStepConfig =
   | SendButtonsStepConfig
   | SendListStepConfig
   | SendTemplateStepConfig
+  | SendMediaStepConfig
   | TagStepConfig
   | AssignConversationStepConfig
   | UpdateContactFieldStepConfig
@@ -725,10 +734,12 @@ export interface Order {
 
 export interface SendPaymentLinkStepConfig {
   product_id: string;
-  /** 'stripe_checkout' | 'manual_url' */
-  provider: 'stripe_checkout' | 'manual_url';
+  /** 'stripe_checkout' | 'cashfree_whatsapp' | 'manual_url' */
+  provider: 'stripe_checkout' | 'cashfree_whatsapp' | 'manual_url';
   /** Used when provider === 'manual_url' — supports {{vars.*}} interpolation */
   manual_url_template?: string;
+  /** Required for Cashfree WhatsApp links. Stored alongside the automation config. */
+  merchant_waba_id?: string;
   /** Message text accompanying the link (supports interpolation) */
   message_text: string;
   /** Button text for Stripe Checkout (max 20 chars per Meta) */

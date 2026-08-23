@@ -69,7 +69,8 @@ export async function POST(request: Request) {
       is_active = true,
       sort_order = 0,
       metadata = {},
-    } = body as Partial<Product>;
+      qr_image_url,
+    } = body as Partial<Product> & { qr_image_url?: string };
 
     if (!name || !name.trim()) {
       return NextResponse.json({ error: 'Product name is required' }, { status: 400 });
@@ -87,6 +88,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
+    const normalizedMetadata = { ...(metadata ?? {}) } as Record<string, unknown>;
+    const resolvedQrImageUrl = typeof qr_image_url === 'string' ? qr_image_url.trim() : typeof metadata?.qr_image_url === 'string' ? String(metadata.qr_image_url).trim() : '';
+    if (resolvedQrImageUrl) {
+      normalizedMetadata.qr_image_url = resolvedQrImageUrl;
+    } else if ('qr_image_url' in normalizedMetadata) {
+      delete normalizedMetadata.qr_image_url;
+    }
+
     const insertPayload = {
       account_id: ctx.accountId,
       user_id: user.id,
@@ -102,7 +111,7 @@ export async function POST(request: Request) {
       requires_shipping,
       is_active,
       sort_order,
-      metadata,
+      metadata: normalizedMetadata,
     };
 
     const { data, error } = await ctx.supabase

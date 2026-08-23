@@ -1,6 +1,6 @@
 import Stripe from 'stripe';
 
-export type PaymentProvider = 'stripe' | 'razorpay' | 'payu';
+export type PaymentProvider = 'stripe' | 'razorpay' | 'payu' | 'cashfree';
 
 export interface PaymentGatewayConfig {
   provider: PaymentProvider;
@@ -8,6 +8,7 @@ export interface PaymentGatewayConfig {
   publishableKey?: string;
   secretKey?: string;
   webhookSecret?: string;
+  merchantWabaId?: string;
   successUrl?: string;
   cancelUrl?: string;
   currency?: string;
@@ -15,22 +16,58 @@ export interface PaymentGatewayConfig {
 }
 
 export function resolvePaymentGatewayConfig(): PaymentGatewayConfig | null {
-  const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim() || process.env.STRIPE_PUBLISHABLE_KEY?.trim();
-  const secretKey = process.env.STRIPE_SECRET_KEY?.trim();
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
-
-  if (!publishableKey && !secretKey && !webhookSecret) {
-    return null;
-  }
+  const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim() || process.env.STRIPE_PUBLISHABLE_KEY?.trim();
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
+  const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
+  const razorpayKeyId = process.env.RAZORPAY_KEY_ID?.trim();
+  const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
+  const razorpayWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET?.trim();
+  const cashfreeAppId = process.env.CASHFREE_APP_ID?.trim();
+  const cashfreeSecretKey = process.env.CASHFREE_SECRET_KEY?.trim();
+  const cashfreeWabaId = process.env.CASHFREE_MERCHANT_WABA_ID?.trim();
+  const cashfreeWebhookSecret = process.env.CASHFREE_WEBHOOK_SECRET?.trim();
 
   const appUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
+  if (cashfreeAppId || cashfreeSecretKey || cashfreeWabaId || cashfreeWebhookSecret) {
+    return {
+      provider: 'cashfree',
+      enabled: Boolean(cashfreeAppId && cashfreeSecretKey),
+      publishableKey: cashfreeAppId,
+      secretKey: cashfreeSecretKey,
+      webhookSecret: cashfreeWebhookSecret,
+      merchantWabaId: cashfreeWabaId,
+      successUrl: `${appUrl}/checkout/success`,
+      cancelUrl: `${appUrl}/checkout/cancel`,
+      currency: 'INR',
+      testMode: process.env.NODE_ENV !== 'production',
+    };
+  }
+
+  if (razorpayKeyId || razorpayKeySecret || razorpayWebhookSecret) {
+    return {
+      provider: 'razorpay',
+      enabled: Boolean(razorpayKeyId && razorpayKeySecret),
+      publishableKey: razorpayKeyId,
+      secretKey: razorpayKeySecret,
+      webhookSecret: razorpayWebhookSecret,
+      successUrl: `${appUrl}/checkout/success`,
+      cancelUrl: `${appUrl}/checkout/cancel`,
+      currency: 'INR',
+      testMode: process.env.NODE_ENV !== 'production',
+    };
+  }
+
+  if (!stripePublishableKey && !stripeSecretKey && !stripeWebhookSecret) {
+    return null;
+  }
+
   return {
     provider: 'stripe',
-    enabled: Boolean(secretKey),
-    publishableKey,
-    secretKey,
-    webhookSecret,
+    enabled: Boolean(stripeSecretKey),
+    publishableKey: stripePublishableKey,
+    secretKey: stripeSecretKey,
+    webhookSecret: stripeWebhookSecret,
     successUrl: `${appUrl}/checkout/success`,
     cancelUrl: `${appUrl}/checkout/cancel`,
     currency: 'USD',

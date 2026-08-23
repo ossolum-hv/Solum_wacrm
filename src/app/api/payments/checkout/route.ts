@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { createRazorpayOrder } from '@/lib/payments/razorpay';
 import { createStripeCheckoutSession } from '@/lib/payments/stripe';
 
 export async function POST(request: Request) {
@@ -9,6 +10,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid JSON payload.' }, { status: 400 });
     }
 
+    const provider = typeof body.provider === 'string' ? body.provider.trim().toLowerCase() : 'stripe';
     const amountCents = Number(body.amountCents ?? body.amount_cents ?? 0);
     const productName = typeof body.productName === 'string' ? body.productName.trim() : 'Purchase';
     const quantity = Number(body.quantity ?? 1);
@@ -19,6 +21,24 @@ export async function POST(request: Request) {
 
     if (!Number.isFinite(amountCents) || amountCents <= 0) {
       return NextResponse.json({ error: 'A valid amountCents value is required.' }, { status: 400 });
+    }
+
+    if (provider === 'razorpay') {
+      const order = await createRazorpayOrder({
+        amountCents,
+        receipt: typeof body.receipt === 'string' ? body.receipt : undefined,
+        currency,
+        notes: { product_name: productName, source: 'app_checkout', customer_email: customerEmail || '' },
+      });
+
+      return NextResponse.json({
+        provider: 'razorpay',
+        key: order.keyId,
+        id: order.id,
+        amount: order.amount,
+        currency: order.currency,
+        status: 'created',
+      });
     }
 
     const session = await createStripeCheckoutSession({
@@ -32,6 +52,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({
+      provider: 'stripe',
       url: session.url,
       id: session.id,
       status: 'created',

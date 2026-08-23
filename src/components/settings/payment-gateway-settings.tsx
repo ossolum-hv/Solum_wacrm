@@ -19,7 +19,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { SettingsPanelHead } from './settings-panel-head';
 
-type PaymentProvider = 'stripe' | 'razorpay' | 'payu';
+type PaymentProvider = 'stripe' | 'razorpay' | 'payu' | 'cashfree';
 
 interface PaymentGatewayConfig {
   provider: PaymentProvider;
@@ -27,6 +27,7 @@ interface PaymentGatewayConfig {
   publishableKey?: string;
   secretKey?: string;
   webhookSecret?: string;
+  merchantWabaId?: string;
   successUrl?: string;
   cancelUrl?: string;
   currency?: string;
@@ -39,6 +40,7 @@ const initialConfig: PaymentGatewayConfig = {
   publishableKey: '',
   secretKey: '',
   webhookSecret: '',
+  merchantWabaId: '',
   successUrl: '',
   cancelUrl: '',
   currency: 'USD',
@@ -49,6 +51,7 @@ const paymentProviderLabels: Record<PaymentProvider, string> = {
   stripe: 'Stripe',
   razorpay: 'Razorpay',
   payu: 'PayU',
+  cashfree: 'Cashfree',
 };
 
 function getProviderFieldLabels(provider: PaymentProvider) {
@@ -66,6 +69,16 @@ function getProviderFieldLabels(provider: PaymentProvider) {
     return {
       publishable: 'Merchant key',
       secret: 'Salt / secret key',
+      webhook: 'Webhook secret',
+      success: 'Success URL',
+      cancel: 'Cancel URL',
+    };
+  }
+
+  if (provider === 'cashfree') {
+    return {
+      publishable: 'App ID',
+      secret: 'Secret key',
       webhook: 'Webhook secret',
       success: 'Success URL',
       cancel: 'Cancel URL',
@@ -229,6 +242,7 @@ export function PaymentGatewaySettings() {
                       <SelectItem value="stripe">Stripe</SelectItem>
                       <SelectItem value="razorpay">Razorpay</SelectItem>
                       <SelectItem value="payu">PayU</SelectItem>
+                      <SelectItem value="cashfree">Cashfree</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -239,7 +253,7 @@ export function PaymentGatewaySettings() {
                     id="publishable-key"
                     value={config.publishableKey || ''}
                     onChange={(event) => setConfig((prev) => ({ ...prev, publishableKey: event.target.value }))}
-                    placeholder={config.provider === 'stripe' ? 'pk_live_... or pk_test_...' : 'Enter your gateway key ID'}
+                    placeholder={config.provider === 'stripe' ? 'pk_live_... or pk_test_...' : config.provider === 'cashfree' ? 'Cashfree app ID' : 'Enter your gateway key ID'}
                   />
                 </div>
 
@@ -250,11 +264,11 @@ export function PaymentGatewaySettings() {
                     type="password"
                     value={config.secretKey || ''}
                     onChange={(event) => setConfig((prev) => ({ ...prev, secretKey: event.target.value }))}
-                    placeholder={config.provider === 'stripe' ? 'sk_live_... or sk_test_...' : 'Enter your gateway secret'}
+                    placeholder={config.provider === 'stripe' ? 'sk_live_... or sk_test_...' : config.provider === 'cashfree' ? 'Cashfree secret key' : 'Enter your gateway secret'}
                   />
                 </div>
 
-                {config.provider === 'stripe' && (
+                {(config.provider === 'stripe' || config.provider === 'cashfree') && (
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="webhook-secret">{providerLabels.webhook}</Label>
                     <Input
@@ -262,7 +276,19 @@ export function PaymentGatewaySettings() {
                       type="password"
                       value={config.webhookSecret || ''}
                       onChange={(event) => setConfig((prev) => ({ ...prev, webhookSecret: event.target.value }))}
-                      placeholder="whsec_..."
+                      placeholder={config.provider === 'cashfree' ? 'Cashfree webhook secret' : 'whsec_...'}
+                    />
+                  </div>
+                )}
+
+                {config.provider === 'cashfree' && (
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="merchant-waba-id">Merchant WABA ID</Label>
+                    <Input
+                      id="merchant-waba-id"
+                      value={config.merchantWabaId || ''}
+                      onChange={(event) => setConfig((prev) => ({ ...prev, merchantWabaId: event.target.value }))}
+                      placeholder="Your Cashfree Merchant WABA ID"
                     />
                   </div>
                 )}

@@ -74,6 +74,14 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         issues.push({ path: `${path}.template_name`, message: 'template name is required' })
       }
       break
+    case 'send_media':
+      if (!nonEmpty(c.media_url)) {
+        issues.push({ path: `${path}.media_url`, message: 'media URL is required' })
+      }
+      if (c.media_type && !['image', 'video', 'document', 'audio'].includes(String(c.media_type))) {
+        issues.push({ path: `${path}.media_type`, message: 'media type must be image, video, document, or audio' })
+      }
+      break
     case 'add_tag':
     case 'remove_tag':
       if (!nonEmpty(c.tag_id)) {
@@ -154,6 +162,12 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         issues.push({
           path: `${path}.manual_url_template`,
           message: 'payment URL template is required for manual_url',
+        })
+      }
+      if (c.provider === 'cashfree_whatsapp' && !nonEmpty(c.merchant_waba_id)) {
+        issues.push({
+          path: `${path}.merchant_waba_id`,
+          message: 'Merchant WABA ID is required for Cashfree WhatsApp payment links',
         })
       }
       if (!nonEmpty(c.message_text)) {

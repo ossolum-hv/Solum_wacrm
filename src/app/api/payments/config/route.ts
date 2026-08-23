@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     }
 
     const provider = typeof body.provider === 'string' ? body.provider.trim().toLowerCase() : 'stripe';
-    const supportedProviders = ['stripe', 'razorpay', 'payu'] as const;
+    const supportedProviders = ['stripe', 'razorpay', 'payu', 'cashfree'] as const;
     if (!supportedProviders.includes(provider as (typeof supportedProviders)[number])) {
       return NextResponse.json({ error: 'Unsupported payment provider.' }, { status: 400 });
     }
@@ -42,6 +42,7 @@ export async function POST(request: Request) {
     const publishableKey = typeof body.publishableKey === 'string' ? body.publishableKey.trim() : '';
     const secretKey = typeof body.secretKey === 'string' ? body.secretKey.trim() : '';
     const webhookSecret = typeof body.webhookSecret === 'string' ? body.webhookSecret.trim() : '';
+    const merchantWabaId = typeof body.merchantWabaId === 'string' ? body.merchantWabaId.trim() : '';
     const enabled = body.enabled === true;
     const successUrl = typeof body.successUrl === 'string' ? body.successUrl.trim() : '';
     const cancelUrl = typeof body.cancelUrl === 'string' ? body.cancelUrl.trim() : '';
@@ -51,12 +52,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `A ${provider} secret key is required before enabling checkout.` }, { status: 400 });
     }
 
+    if (provider === 'cashfree' && enabled && !merchantWabaId) {
+      return NextResponse.json({ error: 'A Cashfree Merchant WABA ID is required before enabling WhatsApp payment links.' }, { status: 400 });
+    }
+
     const config = {
       provider: provider as (typeof supportedProviders)[number],
       enabled,
       publishableKey,
       secretKey,
       webhookSecret,
+      merchantWabaId,
       successUrl,
       cancelUrl,
       currency,

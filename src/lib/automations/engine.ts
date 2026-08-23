@@ -25,6 +25,8 @@ import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
 import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
+import { sendMessageToConversation } from '@/lib/whatsapp/send-message'
+import { createCashfreePaymentLink } from '@/lib/payments/cashfree'
 import { createStripeCheckoutSession } from '@/lib/payments/stripe'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
 
@@ -433,6 +435,24 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       return `template sent via Meta (${whatsapp_message_id})`
     }
 
+    case 'send_media': {
+      const cfg = step.step_config as { media_url?: string; media_type?: 'image' | 'video' | 'document' | 'audio'; caption?: string; file_name?: string }
+      if (!args.contactId) throw new Error('send_media needs a contact')
+      const mediaUrl = interpolate(cfg.media_url ?? '', args)
+      const caption = interpolate(cfg.caption ?? '', args)
+      if (!mediaUrl) throw new Error('send_media needs a media_url')
+      const conversationId = await resolveConversationId(args)
+      const messageType = cfg.media_type ?? 'image'
+      const { whatsappMessageId } = await sendMessageToConversation(db, args.automation.account_id, {
+        conversationId,
+        messageType,
+        contentText: caption || undefined,
+        mediaUrl,
+        filename: cfg.file_name || undefined,
+      })
+      return `media sent via Meta (${whatsappMessageId})`
+    }
+
     case 'add_tag': {
       const cfg = step.step_config as TagStepConfig
       if (!args.contactId || !cfg.tag_id) throw new Error('add_tag needs contact + tag_id')
@@ -629,7 +649,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
 
       const { data: product, error: prodErr } = await db
         .from('products')
-        .select('id, account_id, name, price_cents, currency, digital_file_url, is_active')
+        .select('id, account_id, name, price_cents, currency, digital_file_url, is_active, metadata')
         .eq('id', cfg.product_id)
         .eq('account_id', args.automation.account_id)
         .maybeSingle()
@@ -638,7 +658,8 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!product.is_active) throw new Error('send_payment_link: product is inactive')
 
       let paymentUrl = ''
-      let paymentProvider = cfg.provider === 'stripe_checkout' ? 'stripe' : 'manual_url'
+      let paymentProvider: 'stripe' | 'cashfree' | 'manual_url' =
+        cfg.provider === 'stripe_checkout' ? 'stripe' : cfg.provider === 'cashfree_whatsapp' ? 'cashfree' : 'manual_url'
       const orderId =
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
@@ -656,54 +677,98 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       } else {
         const { data: contact } = await db
           .from('contacts')
-          .select('email')
+          .select('email, name, phone')
           .eq('id', args.contactId)
           .eq('account_id', args.automation.account_id)
           .maybeSingle()
 
         try {
-          const session = await createStripeCheckoutSession({
-            amountCents: product.price_cents,
-            productName: product.name,
-            quantity: 1,
-            currency: product.currency || 'USD',
-            customerEmail: contact?.email ?? undefined,
-            successUrl: `${process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/checkout/success?order_id=${orderId}`,
-            cancelUrl: `${process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/checkout/cancel?order_id=${orderId}`,
-            metadata: {
-              order_id: orderId,
+          const successUrl = `${process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/checkout/success?order_id=${orderId}`
+          const cancelUrl = `${process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/checkout/cancel?order_id=${orderId}`
+
+          if (cfg.provider === 'cashfree_whatsapp') {
+            const cashfreeLink = await createCashfreePaymentLink({
+              orderId,
+              amountCents: product.price_cents,
+              productName: product.name,
+              currency: product.currency || 'INR',
+              customerEmail: contact?.email ?? undefined,
+              customerPhone: contact?.phone ?? undefined,
+              customerName: contact?.name ?? undefined,
+              merchantWabaId: typeof cfg.merchant_waba_id === 'string' ? cfg.merchant_waba_id : undefined,
+              successUrl,
+              cancelUrl,
+              notes: `Order ${orderId} for ${product.name}`,
+            })
+            paymentUrl = cashfreeLink.url
+            paymentProvider = 'cashfree'
+
+            const { error: ordErr } = await db.from('orders').insert({
+              id: orderId,
+              account_id: product.account_id,
+              user_id: args.automation.user_id,
               product_id: product.id,
               contact_id: args.contactId,
-              account_id: args.automation.account_id,
-              source: 'automation_checkout',
-            },
-          })
-          paymentUrl = session.url ?? ''
-          paymentProvider = 'stripe'
+              price_cents: product.price_cents,
+              currency: product.currency,
+              quantity: 1,
+              status: 'pending',
+              payment_provider: paymentProvider,
+              payment_url: paymentUrl,
+              payment_intent_id: cashfreeLink.id,
+              metadata: {
+                product_name: product.name,
+                checkout_source: 'automation_checkout',
+                cashfree_link_id: cashfreeLink.id,
+                merchant_waba_id: typeof cfg.merchant_waba_id === 'string' ? cfg.merchant_waba_id : process.env.CASHFREE_MERCHANT_WABA_ID ?? null,
+              },
+            })
+            if (ordErr) throw new Error(`order insert failed: ${ordErr.message}`)
+          } else {
+            const session = await createStripeCheckoutSession({
+              amountCents: product.price_cents,
+              productName: product.name,
+              quantity: 1,
+              currency: product.currency || 'USD',
+              customerEmail: contact?.email ?? undefined,
+              successUrl,
+              cancelUrl,
+              metadata: {
+                order_id: orderId,
+                product_id: product.id,
+                contact_id: args.contactId,
+                account_id: args.automation.account_id,
+                source: 'automation_checkout',
+              },
+            })
+            paymentUrl = session.url ?? ''
+            paymentProvider = 'stripe'
 
-          const { error: ordErr } = await db.from('orders').insert({
-            id: orderId,
-            account_id: product.account_id,
-            user_id: args.automation.user_id,
-            product_id: product.id,
-            contact_id: args.contactId,
-            price_cents: product.price_cents,
-            currency: product.currency,
-            quantity: 1,
-            status: 'pending',
-            payment_provider: paymentProvider,
-            payment_url: paymentUrl,
-            payment_intent_id: session.id,
-            metadata: {
-              product_name: product.name,
-              checkout_source: 'automation_checkout',
-              stripe_checkout_id: session.id,
-            },
-          })
-          if (ordErr) throw new Error(`order insert failed: ${ordErr.message}`)
-        } catch (stripeErr) {
-          const message = stripeErr instanceof Error ? stripeErr.message : String(stripeErr)
-          throw new Error(`stripe_checkout failed: ${message}`)
+            const { error: ordErr } = await db.from('orders').insert({
+              id: orderId,
+              account_id: product.account_id,
+              user_id: args.automation.user_id,
+              product_id: product.id,
+              contact_id: args.contactId,
+              price_cents: product.price_cents,
+              currency: product.currency,
+              quantity: 1,
+              status: 'pending',
+              payment_provider: paymentProvider,
+              payment_url: paymentUrl,
+              payment_intent_id: session.id,
+              metadata: {
+                product_name: product.name,
+                checkout_source: 'automation_checkout',
+                stripe_checkout_id: session.id,
+              },
+            })
+            if (ordErr) throw new Error(`order insert failed: ${ordErr.message}`)
+          }
+        } catch (providerErr) {
+          const message = providerErr instanceof Error ? providerErr.message : String(providerErr)
+          const providerName = cfg.provider === 'cashfree_whatsapp' ? 'cashfree_whatsapp' : 'stripe_checkout'
+          throw new Error(`${providerName} failed: ${message}`)
         }
       }
 
@@ -747,11 +812,13 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         text,
       })
 
+      const qrImageUrl = typeof product.metadata?.qr_image_url === 'string' ? product.metadata.qr_image_url : ''
       args.context.vars = {
         ...(args.context.vars ?? {}),
         order_id: orderId,
         payment_url: paymentUrl,
         product_id: product.id,
+        qr_image_url: qrImageUrl,
       }
       return `payment link sent via Meta (${whatsapp_message_id}); order ${orderId}`
     }

@@ -35,6 +35,7 @@ import {
   List,
   CreditCard,
   Download,
+  ImageIcon,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -113,6 +114,7 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   send_buttons: { label: "send_buttons", icon: MousePointerClick, border: "border-l-primary" },
   send_list: { label: "send_list", icon: List, border: "border-l-primary" },
   send_template: { label: "send_template", icon: FileText, border: "border-l-primary" },
+  send_media: { label: "send_media", icon: ImageIcon, border: "border-l-primary" },
   add_tag: { label: "add_tag", icon: Tag, border: "border-l-primary" },
   remove_tag: { label: "remove_tag", icon: TagIcon, border: "border-l-primary" },
   assign_conversation: { label: "assign_conversation", icon: UserCheck, border: "border-l-primary" },
@@ -131,6 +133,7 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "send_buttons",
   "send_list",
   "send_template",
+  "send_media",
   "add_tag",
   "remove_tag",
   "assign_conversation",
@@ -186,6 +189,8 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
       return toStepConfig(blankListPayload())
     case "send_template":
       return { template_name: "", language: "en_US" }
+    case "send_media":
+      return { media_type: "image", media_url: "", caption: "" }
     case "add_tag":
     case "remove_tag":
       return { tag_id: "" }
@@ -202,7 +207,7 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
     case "send_webhook":
       return { url: "", headers: {}, body_template: "" }
     case "send_payment_link":
-      return { product_id: "", provider: "manual_url", message_text: "", button_text: "Buy Now" }
+      return { product_id: "", provider: "manual_url", merchant_waba_id: "", message_text: "", button_text: "Buy Now" }
     case "send_download_link":
       return { product_id: "", message_text: "", download_url_template: "" }
     case "close_conversation":
@@ -1559,6 +1564,7 @@ function StepEditor({
             >
               <option value="manual_url">{t("config.providers.manual_url", { defaultValue: "Manual URL" })}</option>
               <option value="stripe_checkout">{t("config.providers.stripe_checkout", { defaultValue: "Stripe Checkout" })}</option>
+              <option value="cashfree_whatsapp">{t("config.providers.cashfree_whatsapp", { defaultValue: "Cashfree WhatsApp Payment Link" })}</option>
             </select>
           </FieldBlock>
           {cfg.provider === "manual_url" && (
@@ -1567,6 +1573,16 @@ function StepEditor({
                 value={(cfg.manual_url_template as string) ?? ""}
                 onChange={(e) => set({ manual_url_template: e.target.value })}
                 placeholder="https://pay.example.com/checkout/{{vars.order_id}}"
+                className="bg-muted text-foreground"
+              />
+            </FieldBlock>
+          )}
+          {cfg.provider === "cashfree_whatsapp" && (
+            <FieldBlock label={t("config.merchantWabaLabel", { defaultValue: "Merchant WABA ID" })}>
+              <Input
+                value={(cfg.merchant_waba_id as string) ?? ""}
+                onChange={(e) => set({ merchant_waba_id: e.target.value })}
+                placeholder="Cashfree Merchant WABA ID"
                 className="bg-muted text-foreground"
               />
             </FieldBlock>
