@@ -168,7 +168,9 @@ export async function POST(request: Request) {
       const eventName = String(razorpayEvent.event || '');
       const payment = razorpayEvent.payload?.payment?.entity as Record<string, any> | undefined;
       const order = razorpayEvent.payload?.order?.entity as Record<string, any> | undefined;
-      const notes = payment?.notes || order?.notes || {};
+      const paymentLink = razorpayEvent.payload?.payment_link?.entity as Record<string, any> | undefined;
+      // Check notes in all possible entities: payment, order, or payment_link
+      const notes = payment?.notes || order?.notes || paymentLink?.notes || {};
       const orderId = notes.order_id || notes.orderId;
 
       if (
@@ -178,19 +180,16 @@ export async function POST(request: Request) {
         eventName === 'order.paid'
       ) {
         if (orderId) {
+          // Atomic idempotency: only update + trigger if status is NOT 'paid'
+          // This prevents race conditions from concurrent webhook events
           const fulfillment = await resolveOrderFulfillmentState(admin, orderId);
-          const { data: orderRow, error: orderReadErr } = await admin
-            .from('orders')
-            .select('id, account_id, contact_id, product_id')
-            .eq('id', orderId)
-            .maybeSingle();
 
-          await admin
+          const { data: updatedOrder, error: updateErr } = await admin
             .from('orders')
             .update({
               status: 'paid',
               payment_provider: 'razorpay',
-              payment_intent_id: payment?.id || order?.id || orderId,
+              payment_intent_id: payment?.id || order?.id || paymentLink?.id || orderId,
               paid_at: new Date().toISOString(),
               fulfillment_status: fulfillment.fulfillment_status,
               fulfilled_at: fulfillment.fulfilled_at,
@@ -199,25 +198,39 @@ export async function POST(request: Request) {
                 razorpay_event: eventName,
                 razorpay_payment_id: payment?.id || null,
                 razorpay_order_id: order?.id || null,
+                razorpay_payment_link_id: paymentLink?.id || null,
               },
             })
-            .eq('id', orderId);
+            .eq('id', orderId)
+            .neq('status', 'paid')  // Only update if NOT already paid
+            .select('id, account_id, contact_id, product_id, status')
+            .maybeSingle();
 
-          if (!orderReadErr && orderRow) {
-            await runAutomationsForTrigger({
-              accountId: orderRow.account_id,
-              triggerType: 'order_paid',
-              contactId: orderRow.contact_id,
-              context: {
-                order_id: orderRow.id,
-                product_id: orderRow.product_id,
-                vars: {
-                  order_id: orderRow.id,
-                  product_id: orderRow.product_id,
-                },
-              },
-            });
+          if (updateErr) {
+            console.error('[payments/webhook] Update failed:', updateErr);
+            return NextResponse.json({ received: true }, { status: 200 });
           }
+
+          // If no row was updated, order was already paid — skip automation
+          if (!updatedOrder) {
+            console.log('[payments/webhook] Order already paid, skipping:', orderId);
+            return NextResponse.json({ received: true }, { status: 200 });
+          }
+
+          // Trigger automation only on successful atomic update
+          await runAutomationsForTrigger({
+            accountId: updatedOrder.account_id,
+            triggerType: 'order_paid',
+            contactId: updatedOrder.contact_id,
+            context: {
+              order_id: updatedOrder.id,
+              product_id: updatedOrder.product_id,
+              vars: {
+                order_id: updatedOrder.id,
+                product_id: updatedOrder.product_id,
+              },
+            },
+          });
         }
         return NextResponse.json({ received: true }, { status: 200 });
       }
@@ -229,7 +242,7 @@ export async function POST(request: Request) {
             .update({
               status: 'cancelled',
               payment_provider: 'razorpay',
-              payment_intent_id: payment?.id || order?.id || orderId,
+              payment_intent_id: payment?.id || order?.id || paymentLink?.id || orderId,
               fulfillment_status: 'failed',
               fulfilled_at: null,
               metadata: {
@@ -237,6 +250,7 @@ export async function POST(request: Request) {
                 razorpay_event: eventName,
                 razorpay_payment_id: payment?.id || null,
                 razorpay_order_id: order?.id || null,
+                razorpay_payment_link_id: paymentLink?.id || null,
               },
             })
             .eq('id', orderId);
