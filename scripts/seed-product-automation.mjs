@@ -79,15 +79,25 @@ async function main() {
   }
   console.log(`Using account=${accountId} owner=${ownerId} product=${productId}`)
 
-  // 3. Build automation + steps.
+  // 3. Read product type so the success branch reflects whether this is a digital handoff or a delivery update.
+  const { data: productRow } = await supabase
+    .from('products')
+    .select('type, name')
+    .eq('id', productId)
+    .single()
+
+  const isDigital = productRow?.type === 'digital'
+
+  // 4. Build automation + steps.
   const { data: automation, error: insErr } = await supabase
     .from('automations')
     .insert({
       account_id: accountId,
       user_id: ownerId,
-      name: 'Product Sales (keyword → payment → download)',
-      description:
-        'When a customer says "buy", send product details + a payment link. After payment is verified, send the download link.',
+      name: isDigital ? 'Digital Sales Flow' : 'Product Sales Flow',
+      description: isDigital
+        ? 'Keyword → checkout → payment confirmation → digital delivery.'
+        : 'Keyword → checkout → payment confirmation → order dispatch + delivery update.',
       trigger_type: 'keyword_match',
       trigger_config: { keywords: KEYWORDS, match_type: 'contains', case_sensitive: false },
       is_active: true,
@@ -100,7 +110,17 @@ async function main() {
   }
   const automationId = automation.id
 
+  const successMessage = isDigital
+    ? 'Payment confirmed! Your order is being processed and your digital delivery is ready to be sent.'
+    : 'Payment confirmed! Your order is being prepared for dispatch and we will share delivery updates as soon as it is on the way.'
+
   const steps = [
+    {
+      step_type: 'send_message',
+      step_config: {
+        text: `Thanks for your interest in ${productRow?.name ?? 'our product'}! Please complete the secure checkout below to confirm your order.`,
+      },
+    },
     {
       step_type: 'send_payment_link',
       step_config: {
@@ -108,8 +128,8 @@ async function main() {
         provider: 'manual_url',
         manual_url_template: `${PAYMENT_BASE}?order={{vars.order_id}}&product=${productId}`,
         message_text:
-          'Thanks for your interest in {{vars.product_name}}! Complete your purchase here:',
-        button_text: 'Buy Now',
+          'Your order is ready. Complete your payment to confirm the purchase and move to the delivery stage.',
+        button_text: 'Pay Now',
       },
     },
     {
@@ -117,20 +137,37 @@ async function main() {
       step_config: { subject: 'payment_status', operand: 'paid', value: '' },
       branches: {
         yes: [
-          {
-            step_type: 'send_download_link',
-            step_config: {
-              product_id: productId,
-              message_text:
-                'Payment received — here is your download: {{vars.download_url}}',
-            },
-          },
+          ...(isDigital
+            ? [
+                {
+                  step_type: 'send_message',
+                  step_config: {
+                    text: successMessage,
+                  },
+                },
+                {
+                  step_type: 'send_download_link',
+                  step_config: {
+                    product_id: productId,
+                    message_text:
+                      'Your payment is confirmed — here is your delivery link: {{vars.download_url}}',
+                  },
+                },
+              ]
+            : [
+                {
+                  step_type: 'send_message',
+                  step_config: {
+                    text: successMessage,
+                  },
+                },
+              ]),
         ],
         no: [
           {
             step_type: 'send_message',
             step_config: {
-              text: "We haven't received your payment yet. Reply once paid and we'll send your download link.",
+              text: "We haven't received your payment yet. Please complete the checkout link to continue your order.",
             },
           },
         ],

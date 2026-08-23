@@ -131,10 +131,10 @@ export const AUTOMATION_TEMPLATES: Record<TemplateSlug, AutomationTemplateDefini
   sales_order_flow: {
     slug: 'sales_order_flow',
     name: 'Sales Order Flow',
-    description: 'From keyword to product selection, checkout, and delivery follow-up.',
+    description: 'Keyword → checkout → payment confirmation → delivery or digital handoff.',
     trigger_type: 'keyword_match',
     trigger_config: {
-      keywords: ['buy', 'order', 'price', 'product', 'delivery'],
+      keywords: ['buy', 'order', 'purchase', 'price', 'delivery'],
       match_type: 'contains',
     },
     steps: [
@@ -142,7 +142,7 @@ export const AUTOMATION_TEMPLATES: Record<TemplateSlug, AutomationTemplateDefini
         step_type: 'send_message',
         step_config: {
           text:
-            'Thanks for reaching out! Tell us which product you want and we will send a secure checkout link to complete the order.',
+            'Thanks for your interest! We can help you place the order. Please complete the secure checkout below to confirm your purchase.',
         },
       },
       {
@@ -151,16 +151,34 @@ export const AUTOMATION_TEMPLATES: Record<TemplateSlug, AutomationTemplateDefini
           product_id: '',
           provider: 'stripe_checkout',
           message_text:
-            'Thanks! Your order is ready. Complete your secure payment to confirm the purchase and we will prepare delivery.',
+            'Your order is ready. Complete your payment now and we will confirm the order immediately.',
           button_text: 'Pay now',
+        },
+      },
+      {
+        step_type: 'condition',
+        step_config: {
+          subject: 'payment_status',
+          operand: 'paid',
         },
       },
       {
         step_type: 'send_message',
         step_config: {
           text:
-            'Once payment is confirmed, our team will prepare the order and share delivery updates with you shortly.',
+            'Payment confirmed! We have started processing your order and will share the delivery details as soon as it is dispatched.',
         },
+        parent_index: 2,
+        branch: 'yes',
+      },
+      {
+        step_type: 'send_message',
+        step_config: {
+          text:
+            'We are still waiting for payment confirmation. Please complete the checkout link to continue your order.',
+        },
+        parent_index: 2,
+        branch: 'no',
       },
     ],
   },

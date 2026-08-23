@@ -11,6 +11,44 @@ function supabaseAdmin() {
   );
 }
 
+async function resolveOrderFulfillmentState(
+  admin: ReturnType<typeof supabaseAdmin>,
+  orderId: string,
+) {
+  const { data: order, error: orderError } = await admin
+    .from('orders')
+    .select('product_id, fulfillment_status, fulfilled_at, metadata')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (orderError || !order) {
+    return {
+      fulfillment_status: 'pending',
+      fulfilled_at: null,
+    };
+  }
+
+  const { data: product, error: productError } = await admin
+    .from('products')
+    .select('type')
+    .eq('id', order.product_id)
+    .maybeSingle();
+
+  if (productError || !product) {
+    return {
+      fulfillment_status: order.fulfillment_status ?? 'pending',
+      fulfilled_at: order.fulfilled_at ?? null,
+    };
+  }
+
+  const isDigitalProduct = product.type === 'digital';
+
+  return {
+    fulfillment_status: isDigitalProduct ? 'fulfilled' : 'pending',
+    fulfilled_at: isDigitalProduct ? (order.fulfilled_at ?? new Date().toISOString()) : null,
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const rawBody = await request.text();
@@ -36,6 +74,7 @@ export async function POST(request: Request) {
 
       if (eventType === 'checkout.session.completed' || eventType === 'checkout.session.async_payment_succeeded') {
         if (orderId) {
+          const fulfillment = await resolveOrderFulfillmentState(admin, orderId);
           await admin
             .from('orders')
             .update({
@@ -43,6 +82,8 @@ export async function POST(request: Request) {
               payment_provider: 'stripe',
               payment_intent_id: obj.id,
               paid_at: new Date().toISOString(),
+              fulfillment_status: fulfillment.fulfillment_status,
+              fulfilled_at: fulfillment.fulfilled_at,
               metadata: {
                 ...(metadata ?? {}),
                 stripe_checkout_id: obj.id,
@@ -62,6 +103,8 @@ export async function POST(request: Request) {
               status: 'cancelled',
               payment_provider: 'stripe',
               payment_intent_id: obj.id,
+              fulfillment_status: 'failed',
+              fulfilled_at: null,
               metadata: {
                 ...(metadata ?? {}),
                 stripe_checkout_id: obj.id,
@@ -81,6 +124,8 @@ export async function POST(request: Request) {
               status: 'cancelled',
               payment_provider: 'stripe',
               payment_intent_id: obj.id,
+              fulfillment_status: 'failed',
+              fulfilled_at: null,
               metadata: {
                 ...(metadata ?? {}),
                 stripe_checkout_id: obj.id,
@@ -110,6 +155,7 @@ export async function POST(request: Request) {
         eventName === 'order.paid'
       ) {
         if (orderId) {
+          const fulfillment = await resolveOrderFulfillmentState(admin, orderId);
           await admin
             .from('orders')
             .update({
@@ -117,6 +163,8 @@ export async function POST(request: Request) {
               payment_provider: 'razorpay',
               payment_intent_id: payment?.id || order?.id || orderId,
               paid_at: new Date().toISOString(),
+              fulfillment_status: fulfillment.fulfillment_status,
+              fulfilled_at: fulfillment.fulfilled_at,
               metadata: {
                 ...(notes ?? {}),
                 razorpay_event: eventName,
@@ -137,6 +185,8 @@ export async function POST(request: Request) {
               status: 'cancelled',
               payment_provider: 'razorpay',
               payment_intent_id: payment?.id || order?.id || orderId,
+              fulfillment_status: 'failed',
+              fulfilled_at: null,
               metadata: {
                 ...(notes ?? {}),
                 razorpay_event: eventName,
