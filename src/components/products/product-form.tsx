@@ -345,18 +345,6 @@ return (
             </div>
           )}
 
-          <div className="grid gap-2 border rounded-lg p-4 bg-muted/30">
-            <h4 className="text-sm font-medium">Payment QR image</h4>
-            <Label htmlFor="qr_image_url">QR code image URL</Label>
-            <Input
-              id="qr_image_url"
-              type="url"
-              value={qrImageUrl}
-              onChange={(e) => setQrImageUrl(e.target.value)}
-              placeholder="https://your-domain.com/qr/your-product.png"
-            />
-          </div>
-
           <div className="grid grid-cols-2 gap-4">
             <div className="flex items-center gap-2">
               <Switch
