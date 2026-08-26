@@ -130,9 +130,9 @@ export default function HomePage() {
   const ctaRef = useScrollReveal(0.1, "0px");
 
   // Counter refs for stats (threshold=0.1 for small stat cards)
-  const { count: leadsCount, ref: leadsRef } = useCountUp(10000, 2000, true, 0.1);
-  const { count: messagesCount, ref: messagesRef } = useCountUp(50000, 2000, true, 0.1);
-  const { count: paymentsCount, ref: paymentsRef } = useCountUp(1000000, 2000, true, 0.1);
+  const { count: leadsCount, ref: leadsRef } = useCountUp(15742, 2000, true, 0.1);
+  const { count: messagesCount, ref: messagesRef } = useCountUp(210986, 2000, true, 0.1);
+  const { count: paymentsCount, ref: paymentsRef } = useCountUp(8547300, 2000, true, 0.1);
 
   // Cast refs to correct type for div elements
   const leadsDivRef = leadsRef as React.RefObject<HTMLDivElement | null>;
