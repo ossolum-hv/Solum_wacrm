@@ -1,7 +1,12 @@
+"use client";
+
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Check, ArrowRight, Shield, Zap, Users, Clock, CreditCard, Calendar, Megaphone, Crown } from "lucide-react";
+import { Suspense } from "react";
+import { Navigation } from "@/components/landing/Navigation";
+import { useScrollReveal, useCountUp, getStaggerDelay } from "@/lib/animations";
 
 const problemPoints = [
   "Missed messages. Forgotten follow-ups. No way to track who paid and who didn't.",
@@ -115,30 +120,34 @@ const pricing = [
 ];
 
 export default function HomePage() {
+  // Scroll reveal refs for sections
+  const heroRef = useScrollReveal(0.1, "0px");
+  const problemRef = useScrollReveal(0.1, "0px");
+  const featuresRef = useScrollReveal(0.1, "0px");
+  const verticalsRef = useScrollReveal(0.1, "0px");
+  const pricingRef = useScrollReveal(0.1, "0px");
+  const proofRef = useScrollReveal(0.1, "0px");
+  const ctaRef = useScrollReveal(0.1, "0px");
+
+  // Counter refs for stats (threshold=0.1 for small stat cards)
+  const { count: leadsCount, ref: leadsRef } = useCountUp(10000, 2000, true, 0.1);
+  const { count: messagesCount, ref: messagesRef } = useCountUp(50000, 2000, true, 0.1);
+  const { count: paymentsCount, ref: paymentsRef } = useCountUp(1000000, 2000, true, 0.1);
+
+  // Cast refs to correct type for div elements
+  const leadsDivRef = leadsRef as React.RefObject<HTMLDivElement | null>;
+  const messagesDivRef = messagesRef as React.RefObject<HTMLDivElement | null>;
+  const paymentsDivRef = paymentsRef as React.RefObject<HTMLDivElement | null>;
+
   return (
     <main className="min-h-screen bg-background">
-      {/* Top Navigation Bar */}
-      <header className="fixed top-0 left-0 right-0 z-50 w-full border-b border-border/50 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link href="/" className="flex items-center gap-2 font-bold text-xl text-foreground" aria-label="X.Solum Home">
-            <span className="text-primary">X.</span>Solum
-          </Link>
-          <nav className="flex items-center gap-3">
-            <Link href="/login" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-              Sign In
-            </Link>
-            <Link href="#book-call">
-              <Button size="sm" className="gap-1.5">
-                Book a Call
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
-          </nav>
-        </div>
-      </header>
+      {/* Top Navigation Bar - using new Navigation component */}
+      <Suspense fallback={<nav className="fixed top-0 left-0 right-0 z-50 w-full h-14 border-b border-border/50 bg-background/80 backdrop-blur" />}>
+        <Navigation />
+      </Suspense>
 
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-background to-muted/30 pt-32 pb-20 lg:pt-40 lg:pb-28">
+      <section ref={heroRef} className="reveal relative overflow-hidden bg-gradient-to-b from-background to-muted/30 pt-32 pb-20 lg:pt-40 lg:pb-28">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-4xl text-center">
             <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl leading-[1.1]">
@@ -163,7 +172,7 @@ export default function HomePage() {
       </section>
 
       {/* The Problem Section */}
-      <section id="problem" className="py-20 lg:py-28 bg-muted/30">
+      <section ref={problemRef} id="problem" className="reveal py-20 lg:py-28 bg-muted/30">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
@@ -186,7 +195,7 @@ export default function HomePage() {
       </section>
 
       {/* What You Get Section */}
-      <section id="features" className="py-20 lg:py-28">
+      <section ref={featuresRef} id="features" className="reveal py-20 lg:py-28">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
@@ -212,7 +221,7 @@ export default function HomePage() {
         </div>
       </section>
 {/* Built For Your Business Section */}
-      <section className="py-20 lg:py-28 bg-muted/30">
+      <section ref={verticalsRef} className="reveal py-20 lg:py-28 bg-muted/30">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
@@ -268,7 +277,7 @@ export default function HomePage() {
         </div>
       </section>
 {/* Pricing Section */}
-      <section id="pricing" className="py-20 lg:py-28">
+      <section ref={pricingRef} id="pricing" className="reveal py-20 lg:py-28">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
@@ -330,7 +339,7 @@ export default function HomePage() {
         </div>
       </section>
 {/* Proof Section */}
-      <section className="py-20 lg:py-28 bg-muted/30">
+      <section ref={proofRef} className="reveal py-20 lg:py-28 bg-muted/30">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="grid gap-12 lg:grid-cols-2 items-center">
             <div>
@@ -340,6 +349,27 @@ export default function HomePage() {
               <p className="mt-4 text-lg text-muted-foreground">
                 Our own agency runs 100% of client inquiries through this system — same setup you'd get. Every lead captured, every payment tracked, every follow-up automated.
               </p>
+              {/* Animated Stats */}
+              <div className="mt-10 grid gap-6 sm:grid-cols-3" role="list" aria-label="Platform statistics">
+                <div ref={leadsDivRef} className="reveal text-center p-6 bg-background rounded-2xl border border-border" style={{ transitionDelay: `${getStaggerDelay(0)}s` }}>
+                  <div className="text-4xl sm:text-5xl font-bold text-primary" aria-live="polite">
+                    {leadsCount.toLocaleString()}+
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">Leads captured</p>
+                </div>
+                <div ref={messagesDivRef} className="reveal text-center p-6 bg-background rounded-2xl border border-border" style={{ transitionDelay: `${getStaggerDelay(1)}s` }}>
+                  <div className="text-4xl sm:text-5xl font-bold text-primary" aria-live="polite">
+                    {messagesCount.toLocaleString()}+
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">Messages processed</p>
+                </div>
+                <div ref={paymentsDivRef} className="reveal text-center p-6 bg-background rounded-2xl border border-border" style={{ transitionDelay: `${getStaggerDelay(2)}s` }}>
+                  <div className="text-4xl sm:text-5xl font-bold text-primary" aria-live="polite">
+                    ₹{paymentsCount.toLocaleString()}+
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">Payments collected</p>
+                </div>
+              </div>
               <div className="mt-8 p-6 bg-background rounded-2xl border border-border">
                 <p className="text-muted-foreground italic">
                   "[Screenshot or 20-sec screen recording of the real TESTBUY flow goes here — this is our strongest asset and it's not on the page yet.]"
@@ -358,7 +388,7 @@ export default function HomePage() {
       </section>
 
       {/* Final CTA Section */}
-      <section id="book-call" className="py-20 lg:py-28">
+      <section ref={ctaRef} id="book-call" className="reveal py-20 lg:py-28">
         <div className="mx-auto max-w-3xl px-4 text-center">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
             Ready to stop losing leads in WhatsApp?

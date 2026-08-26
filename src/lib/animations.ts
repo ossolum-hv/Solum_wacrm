@@ -58,7 +58,8 @@ export function useScrollReveal(
 export function useCountUp(
   target: number,
   duration = 1500,
-  startOnVisible = true
+  startOnVisible = true,
+  threshold = 0.1
 ): { count: number; ref: React.RefObject<HTMLElement | null> } {
   const [count, setCount] = useState(0);
   const ref = useRef<HTMLElement | null>(null);
@@ -83,12 +84,12 @@ export function useCountUp(
           }
         });
       },
-      { threshold: 0.5 }
+      { threshold }
     );
 
     observer.observe(element);
     return () => observer.disconnect();
-  }, [startOnVisible]);
+  }, [startOnVisible, threshold]);
 
   const startCountUp = () => {
     const startTime = performance.now();
