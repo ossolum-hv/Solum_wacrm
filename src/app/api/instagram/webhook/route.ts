@@ -5,6 +5,7 @@ import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { matchKeyword } from '@/lib/instagram/keyword-matcher'
 import { buildWaMeDeepLink } from '@/lib/instagram/deep-link'
 import { sendPrivateReply, sendDmReply } from '@/lib/instagram/meta-api'
+import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import type { InstagramConfig } from '@/types'
 
 export const maxDuration = 60
@@ -185,6 +186,19 @@ async function handleComment(
   const result = await matchKeyword(config.account_id, value.text)
   if (!result.matched || !result.keywordLink) return
 
+  // Trigger automations for comments (without contact/conversation context)
+  // This allows automations to respond to Instagram comments
+  await runAutomationsForTrigger({
+    accountId: config.account_id,
+    triggerType: 'keyword_match',
+    contactId: null,
+    context: {
+      message_text: value.text,
+    },
+  }).catch((err) =>
+    console.error('[instagram-webhook] comment automation dispatch failed:', err)
+  )
+
   const deepLink = buildWaMeDeepLink({
     whatsappNumber,
     prefillMessage: result.keywordLink.wa_prefill_message,
@@ -209,6 +223,41 @@ async function handleDm(
 ) {
   if (!message.text || !message.from?.id) return
 
+  const igUserId = message.from.id
+  const igUsername = message.from.username || igUserId
+
+  // Find or create a contact for this Instagram user
+  const contactId = await findOrCreateInstagramContact(
+    config.account_id,
+    config.user_id,
+    igUserId,
+    igUsername
+  )
+  if (!contactId) return
+
+  // Find or create a conversation for this contact
+  const conversationId = await findOrCreateConversation(
+    config.account_id,
+    config.user_id,
+    contactId
+  )
+  if (!conversationId) return
+
+  // Trigger automations with the keyword_match trigger
+  // This fires any automations configured to trigger on keywords
+  await runAutomationsForTrigger({
+    accountId: config.account_id,
+    triggerType: 'keyword_match',
+    contactId,
+    context: {
+      message_text: message.text,
+      conversation_id: conversationId,
+    },
+  }).catch((err) =>
+    console.error('[instagram-webhook] automation dispatch failed:', err)
+  )
+
+  // Also check for instagram_keyword_links and send wa.me link if matched
   const result = await matchKeyword(config.account_id, message.text)
   if (!result.matched || !result.keywordLink) return
 
@@ -222,10 +271,86 @@ async function handleDm(
     : `Here's your link:\n${deepLink}`
 
   await sendDmReply({
-    recipientIgUserId: message.from.id,
+    recipientIgUserId: igUserId,
     accessToken,
     message: replyText,
   })
+}
+
+async function findOrCreateInstagramContact(
+  accountId: string,
+  userId: string,
+  igUserId: string,
+  igUsername: string
+): Promise<string | null> {
+  // Check if a contact with this Instagram ID already exists
+  const { data: existing } = await supabaseAdmin()
+    .from('contacts')
+    .select('id')
+    .eq('account_id', accountId)
+    .eq('phone', `ig:${igUserId}`)
+    .maybeSingle()
+
+  if (existing) {
+    return existing.id
+  }
+
+  // Create new contact for this Instagram user
+  const { data: newContact, error: createError } = await supabaseAdmin()
+    .from('contacts')
+    .insert({
+      account_id: accountId,
+      user_id: userId,
+      phone: `ig:${igUserId}`,
+      name: igUsername,
+    })
+    .select('id')
+    .single()
+
+  if (createError || !newContact) {
+    console.error('[instagram-webhook] Error creating contact:', createError)
+    return null
+  }
+
+  return newContact.id
+}
+
+async function findOrCreateConversation(
+  accountId: string,
+  userId: string,
+  contactId: string
+): Promise<string | null> {
+  // Look for existing conversation
+  const { data: existing } = await supabaseAdmin()
+    .from('conversations')
+    .select('id')
+    .eq('account_id', accountId)
+    .eq('contact_id', contactId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (existing) {
+    return existing.id
+  }
+
+  // Create new conversation
+  const { data: newConv, error: createError } = await supabaseAdmin()
+    .from('conversations')
+    .insert({
+      account_id: accountId,
+      user_id: userId,
+      contact_id: contactId,
+    })
+    .select('id')
+    .single()
+
+  if (createError || !newConv) {
+    console.error('[instagram-webhook] Error creating conversation:', createError)
+    return null
+  }
+
+  return newConv.id
 }
 
 async function getWhatsAppNumber(accountId: string): Promise<string | null> {
