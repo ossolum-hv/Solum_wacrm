@@ -15,9 +15,11 @@ import type { User } from "@supabase/supabase-js";
 import { DEFAULT_CURRENCY } from "@/lib/currency";
 import {
   canEditSettings as canEditSettingsFor,
+  canManageAccounts as canManageAccountsFor,
   canManageMembers as canManageMembersFor,
   canSendMessages as canSendMessagesFor,
   isAccountRole,
+  isSuperadmin as isSuperadminCheck,
   type AccountRole,
 } from "@/lib/auth/roles";
 
@@ -130,6 +132,10 @@ interface AuthContextValue {
   canEditSettings: boolean;
   /** True if the caller can send messages and edit operational data (agent+). */
   canSendMessages: boolean;
+  /** True if the user is a platform superadmin. */
+  isSuperadmin: boolean;
+  /** True if the user can manage accounts across the platform (superadmin). */
+  canManageAccounts: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -163,6 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [account, setAccount] = useState<AccountSummary | null>(null);
+  const [isSuperadmin, setIsSuperadmin] = useState(false);
   const [loading, setLoading] = useState(true);
   // Why the account/role couldn't be established, when it couldn't.
   // Null on the happy path.
@@ -282,6 +289,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           account_role: accountRole,
         });
         setAccount(accountRow);
+
+        // Check if user is a superadmin
+        try {
+          const { data: superadminRow } = await supabase
+            .from("superadmins")
+            .select("id")
+            .eq("user_id", userId)
+            .maybeSingle();
+          setIsSuperadmin(!!superadminRow);
+        } catch {
+          // Superadmins table might not exist yet (pre-migration)
+        }
         if (!data.account_id || !accountRole) {
           // The row exists but carries no tenancy. Migration 017 made
           // both columns NOT NULL for new signups, so this is a user
@@ -367,6 +386,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         lastFetchedUserIdRef.current = null;
         setProfile(null);
         setAccount(null);
+        setIsSuperadmin(false);
         setProfileLoading(false);
       }
 
@@ -386,6 +406,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setProfile(null);
     setAccount(null);
+    setIsSuperadmin(false);
     window.location.href = "/login";
   }, []);
 
@@ -410,8 +431,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canManageMembers: role ? canManageMembersFor(role) : false,
       canEditSettings: role ? canEditSettingsFor(role) : false,
       canSendMessages: role ? canSendMessagesFor(role) : false,
+      isSuperadmin,
+      canManageAccounts: isSuperadmin,
     };
-  }, [profile?.account_role, profile?.account_id]);
+  }, [profile?.account_role, profile?.account_id, isSuperadmin]);
 
   // Signed out is not a broken account — the shell redirects to /login
   // before anything reads this.
@@ -481,6 +504,8 @@ export function useAuth(): AuthContextValue {
       canManageMembers: false,
       canEditSettings: false,
       canSendMessages: false,
+      isSuperadmin: false,
+      canManageAccounts: false,
     };
   }
   return ctx;

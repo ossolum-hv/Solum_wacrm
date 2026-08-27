@@ -42,6 +42,13 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
+  // Redirect signup to login (public signup disabled)
+  if (request.nextUrl.pathname === '/signup') {
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    return withRefreshedCookies(NextResponse.redirect(url))
+  }
+
   // Auth pages - redirect to dashboard if already logged in.
   // Exception: when an invite token is in the query string we
   // send the already-signed-in user to /join/<token> instead so
@@ -50,15 +57,13 @@ export async function middleware(request: NextRequest) {
   // would silently drop them on /dashboard.
   if (user && (
     request.nextUrl.pathname === '/login' ||
-    request.nextUrl.pathname === '/signup' ||
     request.nextUrl.pathname === '/forgot-password'
   )) {
     const url = request.nextUrl.clone()
     const inviteToken = request.nextUrl.searchParams.get('invite')
     if (
       inviteToken &&
-      (request.nextUrl.pathname === '/login' ||
-        request.nextUrl.pathname === '/signup')
+      request.nextUrl.pathname === '/login'
     ) {
       url.pathname = `/join/${encodeURIComponent(inviteToken)}`
       url.search = ''

@@ -107,3 +107,31 @@ export function canDeleteAccount(role: AccountRole): boolean {
 export function canTransferOwnership(role: AccountRole): boolean {
   return role === "owner";
 }
+
+// ============================================================
+// Superadmin — platform-level role, not scoped to an account.
+// Lives in the `superadmins` table, not in `profiles.account_role`.
+// ============================================================
+
+export type SuperadminUser = {
+  id: string;
+  email: string;
+  full_name: string | null;
+};
+
+export const SUPERADMIN_ROLE = "superadmin" as const;
+export type SuperadminRole = typeof SUPERADMIN_ROLE;
+
+/**
+ * True iff the user is a platform superadmin. This is determined
+ * by checking the `superadmins` table (not account_role). The check
+ * is done in use-auth.tsx during profile fetch.
+ */
+export function isSuperadmin(role: AccountRole | SuperadminRole | null | undefined): boolean {
+  return role === SUPERADMIN_ROLE;
+}
+
+/** True if the caller can create/manage accounts across the platform. */
+export function canManageAccounts(role: AccountRole | SuperadminRole | null | undefined): boolean {
+  return role === SUPERADMIN_ROLE;
+}

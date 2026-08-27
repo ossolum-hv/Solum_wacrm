@@ -39,7 +39,8 @@
     "defaultAvatar": "Avatar",
     "menuProfile": "Profile",
     "menuSettings": "Settings",
-    "menuSignOut": "Sign out"
+    "menuSignOut": "Sign out",
+    "adminUsers": "User Management"
   },
   "Header": {
     "dashboard": "Dashboard",
