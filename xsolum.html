@@ -1,0 +1,1449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X.Solum — The Operating System for WhatsApp Sales</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/three@0.156.1/build/three.min.js"></script>
+    <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
+    <style>
+        :root {
+            --bg: #030014;
+            --bg-2: #08081C;
+            --text: #E0E0FF;
+            --text-dim: #8A8AB0;
+            --accent: #00E5FF;
+            --accent-2: #7B2CBF;
+            --wa: #25D366;
+            --ig: #E1306C;
+            --fb: #1877F2;
+            --glass: rgba(255, 255, 255, 0.03);
+            --border: rgba(255, 255, 255, 0.08);
+        }
+
+        * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+        
+        html { scroll-behavior: smooth; }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
+
+        h1, h2, h3, h4, .display {
+            font-family: 'Space Grotesk', sans-serif;
+            letter-spacing: -0.02em;
+        }
+
+        /* Background Canvas */
+        #bg-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0.6;
+        }
+
+        /* Glassmorphism */
+        .glass {
+            background: rgba(12, 12, 30, 0.5);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+        }
+
+        .glass-card {
+            background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .glass-card:hover {
+            border-color: rgba(0, 229, 255, 0.3);
+            background: linear-gradient(135deg, rgba(0,229,255,0.05) 0%, rgba(255,255,255,0.01) 100%);
+            transform: translateY(-2px);
+        }
+
+        /* Typography Effects */
+        .text-gradient {
+            background: linear-gradient(180deg, #FFFFFF 0%, #8A8AB0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .text-glow {
+            text-shadow: 0 0 30px rgba(0, 229, 255, 0.3);
+        }
+
+        /* Glowing Buttons */
+        .btn-primary {
+            position: relative;
+            background: linear-gradient(90deg, #00E5FF 0%, #25D366 100%);
+            color: #000;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 20px rgba(0, 229, 255, 0.3);
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 0 40px rgba(0, 229, 255, 0.6);
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #fff;
+            transition: all 0.3s ease;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Floating 3D Elements */
+        .float-3d {
+            transform-style: preserve-3d;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotateX(0deg) rotateY(0deg); }
+            50% { transform: translateY(-15px) rotateX(5deg) rotateY(5deg); }
+        }
+
+        /* Chat Bubble Animations */
+        .chat-bubble-enter {
+            opacity: 0;
+            transform: translateY(10px) scale(0.95);
+            animation: bubbleIn 0.5s forwards cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes bubbleIn {
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        /* Flow Builder Nodes */
+        .flow-node {
+            position: relative;
+        }
+        
+        .flow-node::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 12px;
+            padding: 1px;
+            background: linear-gradient(135deg, rgba(0,229,255,0.5), transparent 50%);
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+        }
+
+        /* Pulse Effect */
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--wa);
+            box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.7);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(37, 211, 102, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0); }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+
+        /* Reveal animations */
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 1s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Magnetic Button Effect Helper */
+        .magnetic { transition: transform 0.2s ease-out; }
+
+        /* Grid Background */
+        .grid-bg {
+            background-image: 
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+
+        /* AI Brain Pulse */
+        .ai-core {
+            box-shadow: 0 0 50px rgba(0, 229, 255, 0.4), inset 0 0 20px rgba(0, 229, 255, 0.2);
+            animation: corePulse 4s ease-in-out infinite;
+        }
+        @keyframes corePulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 50px rgba(0, 229, 255, 0.4), inset 0 0 20px rgba(0, 229, 255, 0.2); }
+            50% { transform: scale(1.05); box-shadow: 0 0 80px rgba(0, 229, 255, 0.6), inset 0 0 30px rgba(0, 229, 255, 0.3); }
+        }
+
+        /* Number Counters */
+        .stat-number { font-variant-numeric: tabular-nums; }
+
+        /* Marquee */
+        .marquee-track {
+            animation: marquee 40s linear infinite;
+        }
+        @keyframes marquee {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
+        /* Specific Glows */
+        .glow-wa { box-shadow: 0 0 20px rgba(37, 211, 102, 0.2); border-color: rgba(37, 211, 102, 0.3); }
+        .glow-ig { box-shadow: 0 0 20px rgba(225, 48, 108, 0.2); border-color: rgba(225, 48, 108, 0.3); }
+        .glow-ai { box-shadow: 0 0 20px rgba(0, 229, 255, 0.2); border-color: rgba(0, 229, 255, 0.3); }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
+    </style>
+</head>
+<body class="relative">
+
+    <!-- 3D Background Canvas -->
+    <canvas id="bg-canvas"></canvas>
+
+    <!-- Navigation -->
+    <nav id="navbar" class="fixed top-0 w-full z-50 transition-all duration-300">
+        <div class="max-w-[1400px] mx-auto px-6 lg:px-10 py-5 flex items-center justify-between">
+            <a href="#" class="flex items-center gap-2 group">
+                <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00E5FF] to-[#7B2CBF] flex items-center justify-center transform group-hover:rotate-180 transition-transform duration-500">
+                    <i class="fa-solid fa-bolt text-black text-sm"></i>
+                </div>
+                <span class="display font-bold text-lg tracking-tight">X.Solum</span>
+            </a>
+            
+            <div class="hidden lg:flex items-center gap-8 text-sm text-[var(--text-dim)]">
+                <a href="#journey" class="hover:text-white transition-colors">Product</a>
+                <a href="#brain" class="hover:text-white transition-colors">AI</a>
+                <a href="#flow" class="hover:text-white transition-colors">Automation</a>
+                <a href="#usecases" class="hover:text-white transition-colors">Use Cases</a>
+                <a href="#analytics" class="hover:text-white transition-colors">Resources</a>
+                <a href="#" class="hover:text-white transition-colors">Pricing</a>
+            </div>
+
+            <button class="btn-primary px-5 py-2.5 rounded-lg text-sm">Get Started</button>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="relative min-h-screen flex items-center pt-32 pb-20 overflow-hidden">
+        <div class="absolute inset-0 grid-bg opacity-30"></div>
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[80%] bg-[#00E5FF] opacity-10 blur-[150px] rounded-full"></div>
+        
+        <div class="max-w-[1400px] mx-auto px-6 lg:px-10 grid lg:grid-cols-2 gap-12 items-center relative z-10">
+            <!-- Left: Copy -->
+            <div>
+                <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass text-xs text-[var(--text-dim)] mb-8">
+                    <span class="pulse-dot"></span>
+                    AI-Powered WhatsApp Sales CRM
+                </div>
+                
+                <h1 class="display font-bold text-5xl md:text-6xl lg:text-7xl leading-[0.95] tracking-tighter mb-6 text-gradient">
+                    Turn Every Conversation Into a Customer.
+                </h1>
+                
+                <p class="text-lg text-[var(--text-dim)] max-w-xl mb-10 leading-relaxed">
+                    Capture leads from Instagram and Facebook. Move them to WhatsApp. Let AI engage, qualify and nurture them. Your sales team steps in when it matters.
+                </p>
+
+                <div class="flex flex-wrap gap-4">
+                    <button class="btn-primary px-7 py-3.5 rounded-lg text-sm flex items-center gap-2">
+                        See How It Works <i class="fa-solid fa-arrow-right text-xs"></i>
+                    </button>
+                    <button class="btn-secondary px-7 py-3.5 rounded-lg text-sm">Explore the Platform</button>
+                </div>
+
+                <div class="mt-16 flex items-center gap-8 text-xs text-[var(--text-dim)]">
+                    <div class="flex items-center gap-2"><i class="fa-brands fa-whatsapp text-[var(--wa)] text-lg"></i> WhatsApp Native</div>
+                    <div class="flex items-center gap-2"><i class="fa-solid fa-brain text-[var(--accent)] text-lg"></i> GPT-4 / Claude Ready</div>
+                    <div class="flex items-center gap-2"><i class="fa-solid fa-shield-halved text-lg"></i> Enterprise Secure</div>
+                </div>
+            </div>
+
+            <!-- Right: 3D Floating UI Ecosystem -->
+            <div class="relative h-[600px] hidden lg:block">
+                <!-- Floating Instagram Node -->
+                <div class="absolute top-10 right-10 glass-card glow-ig p-4 rounded-2xl w-64 float-3d" style="animation-delay: 0s;">
+                    <div class="flex items-center gap-2 mb-2">
+                        <i class="fa-brands fa-instagram text-[var(--ig)]"></i>
+                        <span class="text-xs text-[var(--text-dim)]">Instagram Comment</span>
+                    </div>
+                    <p class="text-sm">"Interested. What's the price?"</p>
+                </div>
+
+                <!-- Lead Detected -->
+                <div class="absolute top-40 left-0 glass-card p-4 rounded-2xl w-56 float-3d" style="animation-delay: 1s;">
+                    <div class="flex items-center gap-2 mb-1">
+                        <i class="fa-solid fa-user-plus text-[var(--accent)] text-xs"></i>
+                        <span class="text-xs font-semibold">LEAD CAPTURED</span>
+                    </div>
+                    <p class="text-xs text-[var(--text-dim)]">Rahul Sharma detected</p>
+                </div>
+
+                <!-- AI Core -->
+                <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 rounded-full bg-[#030014] border border-[var(--accent)]/30 flex items-center justify-center ai-core">
+                    <div class="text-center">
+                        <i class="fa-solid fa-brain text-3xl text-[var(--accent)] block mb-2"></i>
+                        <div class="text-xs font-bold tracking-widest text-[var(--accent)]">AI PROCESSING</div>
+                        <div class="text-[10px] text-[var(--text-dim)] mt-1">Understanding Intent...</div>
+                    </div>
+                </div>
+
+                <!-- WhatsApp Conversation -->
+                <div class="absolute bottom-20 right-0 glass-card glow-wa p-4 rounded-2xl w-72 float-3d" style="animation-delay: 2s;">
+                    <div class="flex items-center gap-2 mb-3">
+                        <i class="fa-brands fa-whatsapp text-[var(--wa)]"></i>
+                        <span class="text-xs text-[var(--text-dim)]">WhatsApp Connected</span>
+                    </div>
+                    <div class="space-y-2">
+                        <div class="bg-[var(--wa)]/10 text-xs p-2 rounded-lg rounded-tl-none w-fit">"Great. Are you purchasing for yourself or your business?"</div>
+                        <div class="bg-white/5 text-xs p-2 rounded-lg rounded-tr-none w-fit ml-auto">"The premium one."</div>
+                    </div>
+                </div>
+
+                <!-- High Intent -->
+                <div class="absolute bottom-0 left-10 glass-card p-3 rounded-xl float-3d border-l-2 border-[var(--wa)]" style="animation-delay: 1.5s;">
+                    <div class="flex items-center gap-2">
+                        <span class="text-lg">🔥</span>
+                        <div>
+                            <div class="text-xs font-bold text-[var(--wa)]">HIGH INTENT</div>
+                            <div class="text-[10px] text-[var(--text-dim)]">Sales Rep Notified</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Connecting Lines SVG -->
+                <svg class="absolute inset-0 w-full h-full pointer-events-none z-[-1]">
+                    <defs>
+                        <linearGradient id="line-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#E1306C" />
+                            <stop offset="50%" stop-color="#00E5FF" />
+                            <stop offset="100%" stop-color="#25D366" />
+                        </linearGradient>
+                    </defs>
+                    <path d="M 300 50 Q 200 150 150 200" stroke="url(#line-grad)" stroke-width="1" fill="none" opacity="0.4" />
+                    <path d="M 150 250 Q 250 300 300 300" stroke="url(#line-grad)" stroke-width="1" fill="none" opacity="0.4" />
+                    <path d="M 300 350 Q 400 400 500 450" stroke="url(#line-grad)" stroke-width="1" fill="none" opacity="0.4" />
+                    <path d="M 300 300 Q 200 450 150 500" stroke="url(#line-grad)" stroke-width="1" fill="none" opacity="0.4" />
+                </svg>
+            </div>
+        </div>
+    </section>
+
+    <!-- Trust Bar -->
+    <section class="py-10 border-y border-[var(--border)] overflow-hidden bg-[#030014]/50 backdrop-blur-sm">
+        <div class="flex marquee-track">
+            <div class="flex items-center gap-16 px-8 shrink-0 text-[var(--text-dim)] opacity-50">
+                <span class="text-lg font-medium">Powered by</span>
+                <i class="fa-brands fa-openai text-2xl"></i>
+                <span class="text-xl font-bold">Anthropic</span>
+                <i class="fa-brands fa-meta text-2xl"></i>
+                <span class="text-xl font-bold">WhatsApp Cloud API</span>
+                <span class="text-xl font-bold">GPT-4 Turbo</span>
+                <span class="text-xl font-bold">Claude 3.5</span>
+            </div>
+            <div class="flex items-center gap-16 px-8 shrink-0 text-[var(--text-dim)] opacity-50">
+                <span class="text-lg font-medium">Powered by</span>
+                <i class="fa-brands fa-openai text-2xl"></i>
+                <span class="text-xl font-bold">Anthropic</span>
+                <i class="fa-brands fa-meta text-2xl"></i>
+                <span class="text-xl font-bold">WhatsApp Cloud API</span>
+                <span class="text-xl font-bold">GPT-4 Turbo</span>
+                <span class="text-xl font-bold">Claude 3.5</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Interactive 3D Product Journey -->
+    <section id="journey" class="relative py-32 overflow-hidden">
+        <div class="max-w-[1400px] mx-auto px-6 lg:px-10">
+            <div class="text-center mb-20 reveal">
+                <span class="text-xs text-[var(--accent)] tracking-widest font-semibold">THE PIPELINE</span>
+                <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold mt-4 text-gradient">From Comment to Customer.</h2>
+                <p class="text-[var(--text-dim)] mt-4 max-w-2xl mx-auto">Watch how unstructured social engagement transforms into qualified sales pipelines in real-time.</p>
+            </div>
+
+            <!-- Stage 1 & 2 -->
+            <div class="grid lg:grid-cols-2 gap-12 items-center mb-32 reveal">
+                <div class="order-2 lg:order-1">
+                    <div class="inline-flex items-center gap-2 text-xs text-[var(--ig)] mb-2"><i class="fa-brands fa-instagram"></i> STAGE 01 / SOCIAL MEDIA</div>
+                    <h3 class="text-3xl font-bold mb-4">Every interaction is a potential lead.</h3>
+                    <p class="text-[var(--text-dim)] mb-6">The platform continuously monitors Facebook and Instagram comments and DMs. When someone asks "Price?", "Details?", or "How much?", buying intent is instantly detected.</p>
+                    
+                    <div class="space-y-3 mt-6">
+                        <div class="glass-card p-3 rounded-lg flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <i class="fa-brands fa-instagram text-[var(--ig)]"></i>
+                                <span class="text-sm">"Is this available in Mumbai?"</span>
+                            </div>
+                            <span class="text-xs text-[var(--wa)]">Captured</span>
+                        </div>
+                        <div class="glass-card p-3 rounded-lg flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <i class="fa-brands fa-facebook text-[var(--fb)]"></i>
+                                <span class="text-sm">"Send details please"</span>
+                            </div>
+                            <span class="text-xs text-[var(--wa)]">Captured</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="order-1 lg:order-2 relative h-[400px] flex items-center justify-center">
+                    <div class="absolute inset-0 bg-gradient-to-r from-[var(--ig)]/10 to-transparent blur-3xl"></div>
+                    <!-- Floating Lead Card -->
+                    <div class="glass-card p-6 rounded-2xl w-80 float-3d relative z-10">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--ig)] to-[var(--fb)]"></div>
+                                <div>
+                                    <div class="font-semibold text-sm">Rahul Sharma</div>
+                                    <div class="text-xs text-[var(--text-dim)]">Instagram</div>
+                                </div>
+                            </div>
+                            <span class="text-[10px] px-2 py-1 bg-[var(--accent)]/20 text-[var(--accent)] rounded">NEW</span>
+                        </div>
+                        <div class="space-y-2 text-xs">
+                            <div class="flex justify-between border-b border-white/5 pb-2"><span class="text-[var(--text-dim)]">Interest</span><span>Premium Package</span></div>
+                            <div class="flex justify-between border-b border-white/5 pb-2"><span class="text-[var(--text-dim)]">Intent</span><span class="text-[var(--wa)]">High</span></div>
+                            <div class="flex justify-between"><span class="text-[var(--text-dim)]">Status</span><span>Lead Captured</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stage 3: WhatsApp -->
+            <div class="grid lg:grid-cols-2 gap-12 items-center mb-32 reveal">
+                <div class="relative h-[450px] flex items-center justify-center">
+                    <div class="absolute inset-0 bg-gradient-to-l from-[var(--wa)]/10 to-transparent blur-3xl"></div>
+                    <div class="glass-card w-[340px] rounded-2xl overflow-hidden relative z-10 glow-wa">
+                        <div class="bg-[var(--wa)]/10 p-4 flex items-center gap-3 border-b border-white/5">
+                            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--ig)] to-[var(--fb)]"></div>
+                            <div>
+                                <div class="font-semibold text-sm">Rahul Sharma</div>
+                                <div class="text-xs text-[var(--wa)] flex items-center gap-1"><span class="pulse-dot" style="width:6px; height:6px;"></span> Online</div>
+                            </div>
+                        </div>
+                        <div class="p-4 space-y-3 h-64 overflow-hidden">
+                            <div class="bg-white/5 p-3 rounded-xl rounded-tl-none text-sm w-fit max-w-[80%]">Hi, what's the price?</div>
+                            <div class="bg-[var(--wa)]/20 p-3 rounded-xl rounded-tr-none text-sm w-fit max-w-[80%] ml-auto">Absolutely. Which package are you interested in?</div>
+                            <div class="bg-white/5 p-3 rounded-xl rounded-tl-none text-sm w-fit max-w-[80%]">The premium one.</div>
+                            <div class="bg-[var(--wa)]/20 p-3 rounded-xl rounded-tr-none text-sm w-fit max-w-[80%] ml-auto">Great. Are you purchasing for yourself or your business?</div>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="inline-flex items-center gap-2 text-xs text-[var(--wa)] mb-2"><i class="fa-brands fa-whatsapp"></i> STAGE 02 / WHATSAPP</div>
+                    <h3 class="text-3xl font-bold mb-4">The conversation starts instantly.</h3>
+                    <p class="text-[var(--text-dim)] mb-6">No waiting. No manual follow-ups. The moment a lead is detected, WhatsApp opens a conversational thread that feels human, responsive, and immediate.</p>
+                    
+                    <div class="glass-card p-4 rounded-xl">
+                        <div class="flex items-center gap-3 mb-2">
+                            <div class="w-8 h-8 rounded-full bg-[var(--wa)]/20 flex items-center justify-center"><i class="fa-solid fa-bolt text-[var(--wa)] text-xs"></i></div>
+                            <div class="text-sm font-semibold">Response Time: 0.4s</div>
+                        </div>
+                        <p class="text-xs text-[var(--text-dim)]">AI handles the initial dialogue, asking qualifying questions naturally without rigid scripts.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stage 4: AI Brain -->
+            <div id="brain" class="relative py-32 my-20 reveal">
+                <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-[var(--accent)] opacity-10 blur-[120px] rounded-full"></div>
+                <div class="grid lg:grid-cols-2 gap-16 items-center relative z-10">
+                    <div>
+                        <div class="inline-flex items-center gap-2 text-xs text-[var(--accent)] mb-2"><i class="fa-solid fa-brain"></i> STAGE 03 / AI BRAIN</div>
+                        <h3 class="text-4xl font-bold mb-4">AI doesn't just reply. It understands.</h3>
+                        <p class="text-[var(--text-dim)] mb-8">Beneath the conversation, the AI engine is structuring the chaos of human dialogue into actionable CRM data.</p>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="glass-card p-4 rounded-xl">
+                                <div class="text-xs text-[var(--accent)] mb-1">CAPABILITY</div>
+                                <div class="font-bold text-lg">Understand</div>
+                            </div>
+                            <div class="glass-card p-4 rounded-xl">
+                                <div class="text-xs text-[var(--accent)] mb-1">CAPABILITY</div>
+                                <div class="font-bold text-lg">Classify</div>
+                            </div>
+                            <div class="glass-card p-4 rounded-xl">
+                                <div class="text-xs text-[var(--accent)] mb-1">CAPABILITY</div>
+                                <div class="font-bold text-lg">Qualify</div>
+                            </div>
+                            <div class="glass-card p-4 rounded-xl">
+                                <div class="text-xs text-[var(--accent)] mb-1">CAPABILITY</div>
+                                <div class="font-bold text-lg">Predict</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="relative flex items-center justify-center h-[400px]">
+                        <!-- Neural Network Viz -->
+                        <div class="absolute w-64 h-64 rounded-full border border-[var(--accent)]/20 animate-spin" style="animation-duration: 20s;"></div>
+                        <div class="absolute w-48 h-48 rounded-full border border-[var(--accent)]/40 animate-spin" style="animation-duration: 15s; animation-direction: reverse;"></div>
+                        <div class="absolute w-32 h-32 rounded-full border border-[var(--accent)]/60 animate-spin" style="animation-duration: 10s;"></div>
+                        <div class="w-24 h-24 rounded-full bg-[var(--bg)] border border-[var(--accent)] flex items-center justify-center ai-core">
+                            <i class="fa-solid fa-microchip text-2xl text-[var(--accent)]"></i>
+                        </div>
+                        
+                        <!-- Floating Data Points -->
+                        <div class="absolute top-0 left-1/4 glass-card p-2 rounded text-xs text-[var(--text-dim)] float-3d">Intent: High</div>
+                        <div class="absolute top-1/4 right-0 glass-card p-2 rounded text-xs text-[var(--text-dim)] float-3d" style="animation-delay: 1s;">Budget: ₹2Cr</div>
+                        <div class="absolute bottom-1/4 left-0 glass-card p-2 rounded text-xs text-[var(--text-dim)] float-3d" style="animation-delay: 2s;">Timeline: 30d</div>
+                        <div class="absolute bottom-0 right-1/4 glass-card p-2 rounded text-xs text-[var(--text-dim)] float-3d" style="animation-delay: 1.5s;">Location: Mumbai</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stage 5 & 6: Automation & Handoff -->
+            <div class="grid lg:grid-cols-2 gap-12 items-center mt-32 reveal">
+                <div class="order-2 lg:order-1 relative h-[450px] flex items-center justify-center">
+                    <div class="absolute inset-0 bg-gradient-to-tr from-[var(--accent)]/10 to-transparent blur-3xl"></div>
+                    <!-- High Intent Card -->
+                    <div class="glass-card p-6 rounded-2xl w-80 border-l-4 border-[var(--wa)] glow-wa relative z-10 float-3d">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-2">
+                                <span class="text-2xl">🔥</span>
+                                <span class="font-bold text-sm text-[var(--wa)]">HIGH INTENT LEAD</span>
+                            </div>
+                            <span class="text-2xl font-bold text-[var(--wa)]">87</span>
+                        </div>
+                        <div class="text-sm font-semibold mb-3">Rahul Sharma</div>
+                        <div class="space-y-2 text-xs">
+                            <div class="flex justify-between"><span class="text-[var(--text-dim)]">Budget</span><span>₹2Cr+</span></div>
+                            <div class="flex justify-between"><span class="text-[var(--text-dim)]">Requirement</span><span>3 BHK</span></div>
+                            <div class="flex justify-between"><span class="text-[var(--text-dim)]">Timeline</span><span>30 Days</span></div>
+                            <div class="flex justify-between"><span class="text-[var(--text-dim)]">Intent Score</span><span>87/100</span></div>
+                        </div>
+                        <button class="w-full mt-4 py-2 bg-[var(--wa)]/20 text-[var(--wa)] text-xs rounded-lg font-semibold">Assign to Sales Rep</button>
+                    </div>
+                </div>
+                <div class="order-1 lg:order-2">
+                    <div class="inline-flex items-center gap-2 text-xs text-[var(--wa)] mb-2"><i class="fa-solid fa-hand-holding-heart"></i> STAGE 04 / HUMAN HANDOFF</div>
+                    <h3 class="text-3xl font-bold mb-4">AI knows when to step aside.</h3>
+                    <p class="text-[var(--text-dim)] mb-6">When purchase intent crosses the threshold, the lead is instantly routed to the right salesperson with full conversational context attached.</p>
+                    
+                    <div class="glass-card p-4 rounded-xl flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-2)] flex items-center justify-center">
+                            <i class="fa-solid fa-bell text-white"></i>
+                        </div>
+                        <div>
+                            <div class="text-sm font-semibold">Salesperson Notified</div>
+                            <div class="text-xs text-[var(--text-dim)]">AI recommends immediate sales intervention.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="relative py-32 bg-[var(--bg-2)]">
+        <div class="max-w-[1400px] mx-auto px-6 lg:px-10">
+            <div class="text-center mb-20 reveal">
+                <span class="text-xs text-[var(--accent)] tracking-widest font-semibold">CAPABILITIES</span>
+                <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold mt-4 text-gradient">Explore the Intelligence.</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- 1. Social Lead Capture -->
+                <div class="glass-card p-8 rounded-2xl reveal group cursor-pointer transform transition-all hover:scale-[1.02]">
+                    <div class="w-14 h-14 rounded-xl bg-[var(--ig)]/10 flex items-center justify-center mb-6 group-hover:rotate-6 transition-transform">
+                        <i class="fa-brands fa-instagram text-2xl text-[var(--ig)]"></i>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Social Lead Capture</h3>
+                    <p class="text-sm text-[var(--text-dim)]">Turn comments into conversations. Automatically capture relevant leads from Facebook and Instagram.</p>
+                </div>
+
+                <!-- 2. WhatsApp CRM -->
+                <div class="glass-card p-8 rounded-2xl reveal group cursor-pointer transform transition-all hover:scale-[1.02]">
+                    <div class="w-14 h-14 rounded-xl bg-[var(--wa)]/10 flex items-center justify-center mb-6 group-hover:rotate-6 transition-transform">
+                        <i class="fa-brands fa-whatsapp text-2xl text-[var(--wa)]"></i>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">WhatsApp CRM</h3>
+                    <p class="text-sm text-[var(--text-dim)]">Every conversation. One intelligent workspace. Centralize contacts, status, and sales activity.</p>
+                </div>
+
+                <!-- 3. AI Sales Agent -->
+                <div class="glass-card p-8 rounded-2xl reveal group cursor-pointer transform transition-all hover:scale-[1.02]">
+                    <div class="w-14 h-14 rounded-xl bg-[var(--accent)]/10 flex items-center justify-center mb-6 group-hover:rotate-6 transition-transform">
+                        <i class="fa-solid fa-robot text-2xl text-[var(--accent)]"></i>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">AI Sales Agent</h3>
+                    <p class="text-sm text-[var(--text-dim)]">Let AI have the first conversation. Understands context rather than following rigid scripts.</p>
+                </div>
+
+                <!-- 4. Flow Builder -->
+                <div class="glass-card p-8 rounded-2xl reveal group cursor-pointer transform transition-all hover:scale-[1.02]">
+                    <div class="w-14 h-14 rounded-xl bg-purple-500/10 flex items-center justify-center mb-6 group-hover:rotate-6 transition-transform">
+                        <i class="fa-solid fa-diagram-project text-2xl text-purple-400"></i>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Flow Builder</h3>
+                    <p class="text-sm text-[var(--text-dim)]">Build your sales logic visually. Drag-and-drop triggers, conditions, delays, and AI steps.</p>
+                </div>
+
+                <!-- 5. AI Lead Qualification -->
+                <div class="glass-card p-8 rounded-2xl reveal group cursor-pointer transform transition-all hover:scale-[1.02]">
+                    <div class="w-14 h-14 rounded-xl bg-orange-500/10 flex items-center justify-center mb-6 group-hover:rotate-6 transition-transform">
+                        <i class="fa-solid fa-filter text-2xl text-orange-400"></i>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">AI Lead Qualification</h3>
+                    <p class="text-sm text-[var(--text-dim)]">Know who's serious. AI extracts budget, intent, requirement, location, and buying signals.</p>
+                </div>
+
+                <!-- 6. Smart Follow-Up -->
+                <div class="glass-card p-8 rounded-2xl reveal group cursor-pointer transform transition-all hover:scale-[1.02]">
+                    <div class="w-14 h-14 rounded-xl bg-blue-500/10 flex items-center justify-center mb-6 group-hover:rotate-6 transition-transform">
+                        <i class="fa-solid fa-clock-rotate-left text-2xl text-blue-400"></i>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Smart Follow-Up</h3>
+                    <p class="text-sm text-[var(--text-dim)]">Never let a warm lead go cold. Automated follow-ups based on behavior and lead score.</p>
+                </div>
+            </div>
+
+            <!-- Second Row of Features (Mini) -->
+            <div class="grid md:grid-cols-3 gap-6 mt-6">
+                <div class="glass-card p-6 rounded-xl flex items-center gap-4 reveal">
+                    <div class="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center"><i class="fa-solid fa-handshake text-green-400"></i></div>
+                    <div>
+                        <h4 class="font-semibold text-sm">Human Handoff</h4>
+                        <p class="text-xs text-[var(--text-dim)]">Route high-intent leads instantly.</p>
+                    </div>
+                </div>
+                <div class="glass-card p-6 rounded-xl flex items-center gap-4 reveal">
+                    <div class="w-10 h-10 rounded-lg bg-yellow-500/10 flex items-center justify-center"><i class="fa-solid fa-star text-yellow-400"></i></div>
+                    <div>
+                        <h4 class="font-semibold text-sm">Lead Scoring</h4>
+                        <p class="text-xs text-[var(--text-dim)]">Prioritize prospects likely to buy.</p>
+                    </div>
+                </div>
+                <div class="glass-card p-6 rounded-xl flex items-center gap-4 reveal">
+                    <div class="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center"><i class="fa-solid fa-brain text-red-400"></i></div>
+                    <div>
+                        <h4 class="font-semibold text-sm">Knowledge Brain</h4>
+                        <p class="text-xs text-[var(--text-dim)]">Upload FAQs, docs, and scripts.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Live AI Demonstration -->
+    <section class="relative py-32">
+        <div class="max-w-[1400px] mx-auto px-6 lg:px-10">
+            <div class="text-center mb-16 reveal">
+                <span class="text-xs text-[var(--accent)] tracking-widest font-semibold">LIVE DEMONSTRATION</span>
+                <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold mt-4 text-gradient">Watch AI Close the Gap <br> Between Interest and Intent.</h2>
+            </div>
+
+            <div class="grid lg:grid-cols-2 gap-8 items-center">
+                <!-- Left: Instagram Trigger -->
+                <div class="glass-card p-6 rounded-2xl reveal">
+                    <div class="flex items-center gap-3 pb-4 border-b border-white/5 mb-4">
+                        <i class="fa-brands fa-instagram text-2xl text-[var(--ig)]"></i>
+                        <div>
+                            <div class="text-sm font-semibold">x.solum_realestate</div>
+                            <div class="text-xs text-[var(--text-dim)]">Instagram Post</div>
+                        </div>
+                    </div>
+                    <div class="aspect-video bg-gradient-to-br from-[var(--ig)]/20 to-[var(--fb)]/20 rounded-lg mb-4 flex items-center justify-center">
+                        <i class="fa-solid fa-image text-4xl text-white/10"></i>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs text-[var(--text-dim)] mb-4">
+                        <i class="fa-solid fa-heart text-[var(--ig)]"></i> 1,204 Likes
+                    </div>
+                    <div class="space-y-3">
+                        <div class="flex items-center gap-3 p-3 bg-white/5 rounded-lg">
+                            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500"></div>
+                            <div class="flex-1">
+                                <div class="text-xs font-semibold">priya_singh</div>
+                                <div class="text-sm">"Is this available in Mumbai?"</div>
+                            </div>
+                            <span class="text-[10px] text-[var(--accent)] px-2 py-1 bg-[var(--accent)]/10 rounded">CAPTURED</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: WhatsApp Conversation -->
+                <div class="glass-card p-6 rounded-2xl reveal glow-wa">
+                    <div class="flex items-center gap-3 pb-4 border-b border-white/5 mb-4">
+                        <i class="fa-brands fa-whatsapp text-2xl text-[var(--wa)]"></i>
+                        <div>
+                            <div class="text-sm font-semibold">Priya Singh</div>
+                            <div class="text-xs text-[var(--wa)] flex items-center gap-1"><span class="pulse-dot" style="width:6px; height:6px;"></span> AI Active</div>
+                        </div>
+                    </div>
+                    
+                    <div id="chat-container" class="space-y-3 h-64 overflow-hidden">
+                        <!-- Chat bubbles injected by JS -->
+                    </div>
+
+                    <!-- Lead Score Update -->
+                    <div class="mt-6 pt-4 border-t border-white/5">
+                        <div class="text-xs text-[var(--text-dim)] mb-2">DYNAMIC LEAD SCORE</div>
+                        <div class="flex items-center gap-4">
+                            <div class="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
+                                <div id="score-bar" class="h-full bg-gradient-to-r from-[var(--accent)] to-[var(--wa)] rounded-full transition-all duration-1000" style="width: 0%"></div>
+                            </div>
+                            <div id="score-number" class="stat-number font-bold text-2xl text-[var(--wa)]">0</div>
+                        </div>
+                        <div id="score-attributes" class="grid grid-cols-2 gap-2 mt-4 text-xs opacity-0 transition-opacity duration-500">
+                            <div class="flex justify-between bg-white/5 p-2 rounded"><span class="text-[var(--text-dim)]">Intent</span><span class="text-[var(--wa)]">HIGH</span></div>
+                            <div class="flex justify-between bg-white/5 p-2 rounded"><span class="text-[var(--text-dim)]">Budget</span><span>₹2-3 Cr</span></div>
+                            <div class="flex justify-between bg-white/5 p-2 rounded"><span class="text-[var(--text-dim)]">Purpose</span><span>Investment</span></div>
+                            <div class="flex justify-between bg-white/5 p-2 rounded"><span class="text-[var(--text-dim)]">Location</span><span>Mumbai</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Flow Builder Section -->
+    <section id="flow" class="relative py-32 bg-[var(--bg-2)] overflow-hidden">
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[var(--accent)] opacity-5 blur-[120px] rounded-full"></div>
+        
+        <div class="max-w-[1400px] mx-auto px-6 lg:px-10 relative z-10">
+            <div class="text-center mb-20 reveal">
+                <span class="text-xs text-[var(--accent)] tracking-widest font-semibold">AUTOMATION ENGINE</span>
+                <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold mt-4 text-gradient">Build Once. Automate Every Conversation.</h2>
+                <p class="text-[var(--text-dim)] mt-4 max-w-2xl mx-auto">A visual canvas to design your entire sales logic without code.</p>
+            </div>
+
+            <!-- Flow Canvas -->
+            <div class="relative glass p-10 rounded-3xl reveal">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-y-8 gap-x-4 items-center relative">
+                    <!-- Node 1: Trigger -->
+                    <div class="flow-node glass-card p-4 rounded-xl border-[var(--ig)]/30 text-center transform hover:scale-105 transition-transform">
+                        <div class="text-xs text-[var(--ig)] mb-2">TRIGGER</div>
+                        <i class="fa-brands fa-instagram text-xl mb-2 block"></i>
+                        <div class="text-sm font-semibold">Instagram Comment</div>
+                    </div>
+                    
+                    <!-- Arrow -->
+                    <div class="hidden md:block text-center text-[var(--text-dim)]">
+                        <div class="w-full h-px bg-gradient-to-r from-[var(--ig)] to-[var(--accent)] relative">
+                            <div class="absolute right-0 top-1/2 -translate-y-1/2 w-0 h-0 border-l-8 border-l-[var(--accent)] border-y-4 border-y-transparent"></div>
+                        </div>
+                    </div>
+
+                    <!-- Node 2: Action -->
+                    <div class="flow-node glass-card p-4 rounded-xl text-center transform hover:scale-105 transition-transform">
+                        <div class="text-xs text-[var(--accent)] mb-2">ACTION</div>
+                        <i class="fa-solid fa-user-plus text-xl mb-2 block"></i>
+                        <div class="text-sm font-semibold">Create Lead</div>
+                    </div>
+
+                    <div class="hidden md:block text-center text-[var(--text-dim)]">
+                        <div class="w-full h-px bg-gradient-to-r from-[var(--accent)] to-[var(--accent)] relative">
+                            <div class="absolute right-0 top-1/2 -translate-y-1/2 w-0 h-0 border-l-8 border-l-[var(--accent)] border-y-4 border-y-transparent"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 2 -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-y-8 gap-x-4 items-center mt-8">
+                    <div class="flow-node glass-card p-4 rounded-xl text-center transform hover:scale-105 transition-transform border-[var(--wa)]/30">
+                        <div class="text-xs text-[var(--wa)] mb-2">ACTION</div>
+                        <i class="fa-brands fa-whatsapp text-xl mb-2 block"></i>
+                        <div class="text-sm font-semibold">Start WhatsApp</div>
+                    </div>
+
+                    <div class="hidden md:block text-center text-[var(--text-dim)]">
+                        <div class="w-full h-px bg-gradient-to-r from-[var(--wa)] to-[var(--accent)] relative">
+                            <div class="absolute right-0 top-1/2 -translate-y-1/2 w-0 h-0 border-l-8 border-l-[var(--accent)] border-y-4 border-y-transparent"></div>
+                        </div>
+                    </div>
+
+                    <div class="flow-node glass-card p-4 rounded-xl text-center transform hover:scale-105 transition-transform">
+                        <div class="text-xs text-purple-400 mb-2">AI</div>
+                        <i class="fa-solid fa-brain text-xl mb-2 block"></i>
+                        <div class="text-sm font-semibold">Analyze Intent</div>
+                    </div>
+
+                    <div class="hidden md:block text-center text-[var(--text-dim)]">
+                        <div class="w-full h-px bg-gradient-to-r from-purple-400 to-[var(--accent)] relative">
+                            <div class="absolute right-0 top-1/2 -translate-y-1/2 w-0 h-0 border-l-8 border-l-[var(--accent)] border-y-4 border-y-transparent"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Condition Node -->
+                <div class="flex justify-center mt-8">
+                    <div class="flow-node glass-card p-4 rounded-xl text-center transform hover:scale-105 transition-transform border-yellow-400/30 w-full md:w-1/3">
+                        <div class="text-xs text-yellow-400 mb-2">CONDITION</div>
+                        <i class="fa-solid fa-code-branch text-xl mb-2 block"></i>
+                        <div class="text-sm font-semibold">Lead Score > 70?</div>
+                    </div>
+                </div>
+
+                <!-- Split Paths -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
+                    <!-- YES Path -->
+                    <div class="glass-card p-6 rounded-xl text-center border-l-4 border-[var(--wa)] glow-wa">
+                        <div class="text-xs text-[var(--wa)] mb-2">PATH: YES</div>
+                        <div class="text-lg font-bold">Route to Sales Rep</div>
+                        <div class="text-xs text-[var(--text-dim)] mt-1">Immediate notification sent</div>
+                    </div>
+                    <!-- NO Path -->
+                    <div class="glass-card p-6 rounded-xl text-center border-l-4 border-[var(--text-dim)]">
+                        <div class="text-xs text-[var(--text-dim)] mb-2">PATH: NO</div>
+                        <div class="text-lg font-bold">Add to Nurture Sequence</div>
+                        <div class="text-xs text-[var(--text-dim)] mt-1">Follow-up automation activated</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- AI Model Integration -->
+    <section class="relative py-32">
+        <div class="max-w-[1400px] mx-auto px-6 lg:px-10">
+            <div class="text-center mb-20 reveal">
+                <span class="text-xs text-[var(--accent)] tracking-widest font-semibold">MODEL AGNOSTIC</span>
+                <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold mt-4 text-gradient">Bring Your Own Intelligence.</h2>
+                <p class="text-[var(--text-dim)] mt-4 max-w-2xl mx-auto">Connect any AI model to your sales infrastructure. The platform adapts to your business logic.</p>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6 items-center">
+                <!-- AI Models -->
+                <div class="glass-card p-6 rounded-xl text-center reveal">
+                    <i class="fa-brands fa-openai text-3xl mb-2"></i>
+                    <div class="font-semibold text-sm">ChatGPT</div>
+                    <div class="text-xs text-[var(--text-dim)]">GPT-4 / 3.5</div>
+                </div>
+                <div class="glass-card p-6 rounded-xl text-center reveal">
+                    <div class="w-12 h-12 mx-auto mb-2 bg-white/10 rounded-full flex items-center justify-center">
+                        <span class="text-xl font-bold">C</span>
+                    </div>
+                    <div class="font-semibold text-sm">Anthropic</div>
+                    <div class="text-xs text-[var(--text-dim)]">Claude 3.5</div>
+                </div>
+                <div class="glass-card p-6 rounded-xl text-center reveal">
+                    <i class="fa-solid fa-brain text-3xl mb-2 text-purple-400"></i>
+                    <div class="font-semibold text-sm">Custom LLM</div>
+                    <div class="text-xs text-[var(--text-dim)]">Open Source</div>
+                </div>
+                <div class="glass-card p-6 rounded-xl text-center reveal">
+                    <i class="fa-solid fa-plug text-3xl mb-2 text-blue-400"></i>
+                    <div class="font-semibold text-sm">API Integrations</div>
+                    <div class="text-xs text-[var(--text-dim)]">Any Webhook</div>
+                </div>
+            </div>
+
+            <!-- Connection Diagram -->
+            <div class="mt-20 grid grid-cols-1 md:grid-cols-3 gap-8 items-center reveal">
+                <div class="space-y-4">
+                    <div class="glass-card p-4 rounded-xl flex items-center gap-3">
+                        <i class="fa-solid fa-book text-[var(--accent)]"></i>
+                        <span class="text-sm">Business Knowledge</span>
+                    </div>
+                    <div class="glass-card p-4 rounded-xl flex items-center gap-3">
+                        <i class="fa-solid fa-scale-balanced text-[var(--accent)]"></i>
+                        <span class="text-sm">Sales Rules</span>
+                    </div>
+                    <div class="glass-card p-4 rounded-xl flex items-center gap-3">
+                        <i class="fa-solid fa-database text-[var(--accent)]"></i>
+                        <span class="text-sm">CRM Data</span>
+                    </div>
+                </div>
+
+                <div class="flex justify-center">
+                    <div class="relative w-40 h-40 flex items-center justify-center">
+                        <div class="absolute inset-0 rounded-full border border-[var(--accent)]/30 animate-ping opacity-20"></div>
+                        <div class="w-32 h-32 rounded-full bg-[var(--bg)] border border-[var(--accent)] flex items-center justify-center ai-core">
+                            <div class="text-center">
+                                <i class="fa-solid fa-microchip text-2xl text-[var(--accent)]"></i>
+                                <div class="text-xs mt-2 font-bold">AI SALES ENGINE</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="glass-card p-4 rounded-xl flex items-center gap-3 justify-end glow-wa">
+                        <span class="text-sm">WhatsApp</span>
+                        <i class="fa-brands fa-whatsapp text-[var(--wa)]"></i>
+                    </div>
+                    <div class="glass-card p-4 rounded-xl flex items-center gap-3 justify-end">
+                        <span class="text-sm">Instagram</span>
+                        <i class="fa-brands fa-instagram text-[var(--ig)]"></i>
+                    </div>
+                    <div class="glass-card p-4 rounded-xl flex items-center gap-3 justify-end">
+                        <span class="text-sm">Sales Team</span>
+                        <i class="fa-solid fa-users text-blue-400"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Use Cases -->
+    <section id="usecases" class="relative py-32 bg-[var(--bg-2)]">
+        <div class="max-w-[1400px] mx-auto px-6 lg:px-10">
+            <div class="text-center mb-20 reveal">
+                <span class="text-xs text-[var(--accent)] tracking-widest font-semibold">INDUSTRIES</span>
+                <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold mt-4 text-gradient">Built for High-Intent Sales.</h2>
+            </div>
+
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div class="glass-card p-8 rounded-2xl reveal group cursor-pointer">
+                    <div class="flex items-center justify-between mb-6">
+                        <i class="fa-solid fa-building text-2xl text-[var(--accent)]"></i>
+                        <span class="text-xs text-[var(--text-dim)]">Real Estate</span>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">From property enquiry to site visit.</h3>
+                    <div class="mt-4 flex items-center gap-2 text-xs text-[var(--wa)]">
+                        <span class="pulse-dot" style="width:6px; height:6px;"></span> 3x Higher Conversion Rate
+                    </div>
+                </div>
+
+                <div class="glass-card p-8 rounded-2xl reveal group cursor-pointer">
+                    <div class="flex items-center justify-between mb-6">
+                        <i class="fa-solid fa-graduation-cap text-2xl text-[var(--accent)]"></i>
+                        <span class="text-xs text-[var(--text-dim)]">Education</span>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Turn course enquiries into enrollments.</h3>
+                    <div class="mt-4 flex items-center gap-2 text-xs text-[var(--wa)]">
+                        <span class="pulse-dot" style="width:6px; height:6px;"></span> 60% Faster Response
+                    </div>
+                </div>
+
+                <div class="glass-card p-8 rounded-2xl reveal group cursor-pointer">
+                    <div class="flex items-center justify-between mb-6">
+                        <i class="fa-solid fa-heart-pulse text-2xl text-[var(--accent)]"></i>
+                        <span class="text-xs text-[var(--text-dim)]">Healthcare</span>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Turn enquiries into booked appointments.</h3>
+                    <div class="mt-4 flex items-center gap-2 text-xs text-[var(--wa)]">
+                        <span class="pulse-dot" style="width:6px; height:6px;"></span> Zero Missed Leads
+                    </div>
+                </div>
+
+                <div class="glass-card p-8 rounded-2xl reveal group cursor-pointer">
+                    <div class="flex items-center justify-between mb-6">
+                        <i class="fa-solid fa-car text-2xl text-[var(--accent)]"></i>
+                        <span class="text-xs text-[var(--text-dim)]">Automotive</span>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Turn vehicle interest into test drives.</h3>
+                    <div class="mt-4 flex items-center gap-2 text-xs text-[var(--wa)]">
+                        <span class="pulse-dot" style="width:6px; height:6px;"></span> 45% Test Drive Rate
+                    </div>
+                </div>
+
+                <div class="glass-card p-8 rounded-2xl reveal group cursor-pointer">
+                    <div class="flex items-center justify-between mb-6">
+                        <i class="fa-solid fa-chalkboard-user text-2xl text-[var(--accent)]"></i>
+                        <span class="text-xs text-[var(--text-dim)]">Coaching</span>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Turn Instagram engagement into qualified calls.</h3>
+                    <div class="mt-4 flex items-center gap-2 text-xs text-[var(--wa)]">
+                        <span class="pulse-dot" style="width:6px; height:6px;"></span> 5x ROI on Ad Spend
+                    </div>
+                </div>
+
+                <div class="glass-card p-8 rounded-2xl reveal group cursor-pointer">
+                    <div class="flex items-center justify-between mb-6">
+                        <i class="fa-solid fa-bag-shopping text-2xl text-[var(--accent)]"></i>
+                        <span class="text-xs text-[var(--text-dim)]">D2C</span>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">Turn product questions into purchases.</h3>
+                    <div class="mt-4 flex items-center gap-2 text-xs text-[var(--wa)]">
+                        <span class="pulse-dot" style="width:6px; height:6px;"></span> 30% Cart Recovery
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Analytics -->
+    <section id="analytics" class="relative py-32">
+        <div class="max-w-[1400px] mx-auto px-6 lg:px-10">
+            <div class="text-center mb-20 reveal">
+                <span class="text-xs text-[var(--accent)] tracking-widest font-semibold">PERFORMANCE</span>
+                <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold mt-4 text-gradient">Intelligence You Can Measure.</h2>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-12">
+                <div class="glass-card p-6 rounded-xl text-center reveal">
+                    <div class="stat-number text-3xl font-bold text-gradient" data-target="12482">0</div>
+                    <div class="text-xs text-[var(--text-dim)] mt-1">Leads Captured</div>
+                </div>
+                <div class="glass-card p-6 rounded-xl text-center reveal">
+                    <div class="stat-number text-3xl font-bold text-gradient" data-target="8921">0</div>
+                    <div class="text-xs text-[var(--text-dim)] mt-1">Conversations</div>
+                </div>
+                <div class="glass-card p-6 rounded-xl text-center reveal">
+                    <div class="stat-number text-3xl font-bold text-gradient" data-target="3214">0</div>
+                    <div class="text-xs text-[var(--text-dim)] mt-1">Qualified Leads</div>
+                </div>
+                <div class="glass-card p-6 rounded-xl text-center reveal">
+                    <div class="stat-number text-3xl font-bold text-[var(--wa)]" data-target="842">0</div>
+                    <div class="text-xs text-[var(--text-dim)] mt-1">Hot Leads</div>
+                </div>
+                <div class="glass-card p-6 rounded-xl text-center reveal">
+                    <div class="stat-number text-3xl font-bold text-gradient" data-target="421">0</div>
+                    <div class="text-xs text-[var(--text-dim)] mt-1">Appointments</div>
+                </div>
+                <div class="glass-card p-6 rounded-xl text-center reveal">
+                    <div class="stat-number text-3xl font-bold text-[var(--wa)]" data-target="126">0</div>
+                    <div class="text-xs text-[var(--text-dim)] mt-1">Conversions</div>
+                </div>
+            </div>
+
+            <div class="grid lg:grid-cols-2 gap-6 reveal">
+                <!-- Chart 1 -->
+                <div class="glass-card p-8 rounded-2xl">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h3 class="font-semibold">Lead Velocity</h3>
+                            <p class="text-xs text-[var(--text-dim)]">Last 30 days</p>
+                        </div>
+                        <div class="text-sm text-[var(--wa)]">▲ 32.5%</div>
+                    </div>
+                    <div class="h-48 flex items-end gap-2">
+                        <div class="flex-1 bg-gradient-to-t from-[var(--accent)]/20 to-[var(--accent)] rounded-t" style="height: 40%"></div>
+                        <div class="flex-1 bg-gradient-to-t from-[var(--accent)]/20 to-[var(--accent)] rounded-t" style="height: 60%"></div>
+                        <div class="flex-1 bg-gradient-to-t from-[var(--accent)]/20 to-[var(--accent)] rounded-t" style="height: 50%"></div>
+                        <div class="flex-1 bg-gradient-to-t from-[var(--accent)]/20 to-[var(--accent)] rounded-t" style="height: 80%"></div>
+                        <div class="flex-1 bg-gradient-to-t from-[var(--accent)]/20 to-[var(--accent)] rounded-t" style="height: 70%"></div>
+                        <div class="flex-1 bg-gradient-to-t from-[var(--accent)]/20 to-[var(--accent)] rounded-t" style="height: 90%"></div>
+                        <div class="flex-1 bg-gradient-to-t from-[var(--accent)]/20 to-[var(--accent)] rounded-t" style="height: 100%"></div>
+                    </div>
+                </div>
+
+                <!-- Chart 2 -->
+                <div class="glass-card p-8 rounded-2xl">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h3 class="font-semibold">AI vs Human Handling</h3>
+                            <p class="text-xs text-[var(--text-dim)]">Total conversations</p>
+                        </div>
+                    </div>
+                    <div class="space-y-4 mt-8">
+                        <div>
+                            <div class="flex justify-between text-xs mb-2">
+                                <span>AI Handled</span>
+                                <span class="text-[var(--accent)]">78%</span>
+                            </div>
+                            <div class="h-2 bg-white/5 rounded-full">
+                                <div class="h-full bg-[var(--accent)] rounded-full" style="width: 78%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-xs mb-2">
+                                <span>Human Handled</span>
+                                <span class="text-[var(--wa)]">22%</span>
+                            </div>
+                            <div class="h-2 bg-white/5 rounded-full">
+                                <div class="h-full bg-[var(--wa)] rounded-full" style="width: 22%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-8 pt-4 border-t border-white/5">
+                        <div class="text-xs text-[var(--text-dim)]">Average Response Time</div>
+                        <div class="text-2xl font-bold mt-1">0.4s <span class="text-sm font-normal text-[var(--text-dim)]">vs 4.2h (Human)</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Before vs After -->
+    <section class="relative py-32 bg-[var(--bg-2)]">
+        <div class="max-w-[1400px] mx-auto px-6 lg:px-10">
+            <div class="text-center mb-20 reveal">
+                <span class="text-xs text-[var(--accent)] tracking-widest font-semibold">THE TRANSFORMATION</span>
+                <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold mt-4 text-gradient">The Old Way vs The X.Solum Way.</h2>
+            </div>
+
+            <div class="grid lg:grid-cols-2 gap-8">
+                <!-- Before -->
+                <div class="glass-card p-8 rounded-2xl reveal opacity-60">
+                    <div class="flex items-center gap-3 mb-6">
+                        <div class="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center">
+                            <i class="fa-solid fa-xmark text-red-400"></i>
+                        </div>
+                        <h3 class="text-xl font-bold">Before X.Solum</h3>
+                    </div>
+                    <ul class="space-y-4">
+                        <li class="flex items-center gap-3 text-sm text-[var(--text-dim)]"><i class="fa-solid fa-circle-xmark text-red-400/50"></i> Manual Instagram replies</li>
+                        <li class="flex items-center gap-3 text-sm text-[var(--text-dim)]"><i class="fa-solid fa-circle-xmark text-red-400/50"></i> Missed enquiries after hours</li>
+                        <li class="flex items-center gap-3 text-sm text-[var(--text-dim)]"><i class="fa-solid fa-circle-xmark text-red-400/50"></i> Messy Excel sheets</li>
+                        <li class="flex items-center gap-3 text-sm text-[var(--text-dim)]"><i class="fa-solid fa-circle-xmark text-red-400/50"></i> Slow follow-ups</li>
+                        <li class="flex items-center gap-3 text-sm text-[var(--text-dim)]"><i class="fa-solid fa-circle-xmark text-red-400/50"></i> Unqualified leads wasting time</li>
+                        <li class="flex items-center gap-3 text-sm text-[var(--text-dim)]"><i class="fa-solid fa-circle-xmark text-red-400/50"></i> Salesperson overload</li>
+                    </ul>
+                </div>
+
+                <!-- After -->
+                <div class="glass-card p-8 rounded-2xl reveal border-l-4 border-[var(--wa)] glow-wa">
+                    <div class="flex items-center gap-3 mb-6">
+                        <div class="w-10 h-10 rounded-lg bg-[var(--wa)]/10 flex items-center justify-center">
+                            <i class="fa-solid fa-check text-[var(--wa)]"></i>
+                        </div>
+                        <h3 class="text-xl font-bold">With X.Solum AI</h3>
+                    </div>
+                    <ul class="space-y-4">
+                        <li class="flex items-center gap-3 text-sm"><i class="fa-solid fa-circle-check text-[var(--wa)]"></i> Automatic social capture</li>
+                        <li class="flex items-center gap-3 text-sm"><i class="fa-solid fa-circle-check text-[var(--wa)]"></i> 24/7 Instant WhatsApp engagement</li>
+                        <li class="flex items-center gap-3 text-sm"><i class="fa-solid fa-circle-check text-[var(--wa)]"></i> AI qualification in real-time</li>
+                        <li class="flex items-center gap-3 text-sm"><i class="fa-solid fa-circle-check text-[var(--wa)]"></i> Smart automated follow-ups</li>
+                        <li class="flex items-center gap-3 text-sm"><i class="fa-solid fa-circle-check text-[var(--wa)]"></i> Lead scoring prioritization</li>
+                        <li class="flex items-center gap-3 text-sm"><i class="fa-solid fa-circle-check text-[var(--wa)]"></i> Sales-ready prospects only</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Security / Control -->
+    <section class="relative py-32">
+        <div class="max-w-[1400px] mx-auto px-6 lg:px-10">
+            <div class="grid lg:grid-cols-2 gap-16 items-center">
+                <div class="reveal">
+                    <span class="text-xs text-[var(--accent)] tracking-widest font-semibold">CONTROL & GOVERNANCE</span>
+                    <h2 class="text-4xl md:text-5xl font-bold mt-4 text-gradient">AI works for your business. You remain in control.</h2>
+                    <p class="text-[var(--text-dim)] mt-6 mb-8">Configure guardrails, approve critical actions, and maintain complete visibility over every conversation.</p>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="glass-card p-4 rounded-xl">
+                            <i class="fa-solid fa-shield-halved text-[var(--accent)] mb-2"></i>
+                            <div class="font-semibold text-sm">AI Guardrails</div>
+                            <div class="text-xs text-[var(--text-dim)] mt-1">Strict boundary rules</div>
+                        </div>
+                        <div class="glass-card p-4 rounded-xl">
+                            <i class="fa-solid fa-user-shield text-[var(--accent)] mb-2"></i>
+                            <div class="font-semibold text-sm">Human Approval</div>
+                            <div class="text-xs text-[var(--text-dim)] mt-1">For high-value actions</div>
+                        </div>
+                        <div class="glass-card p-4 rounded-xl">
+                            <i class="fa-solid fa-key text-[var(--accent)] mb-2"></i>
+                            <div class="font-semibold text-sm">Role-Based Access</div>
+                            <div class="text-xs text-[var(--text-dim)] mt-1">Team hierarchy control</div>
+                        </div>
+                        <div class="glass-card p-4 rounded-xl">
+                            <i class="fa-solid fa-history text-[var(--accent)] mb-2"></i>
+                            <div class="font-semibold text-sm">Audit Logs</div>
+                            <div class="text-xs text-[var(--text-dim)] mt-1">Full conversation history</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="relative h-[500px] flex items-center justify-center reveal">
+                    <div class="absolute inset-0 bg-gradient-to-r from-[var(--accent)]/10 to-transparent blur-3xl"></div>
+                    <!-- Shield Visualization -->
+                    <div class="relative w-64 h-64">
+                        <div class="absolute inset-0 rounded-full border border-[var(--accent)]/20 animate-spin" style="animation-duration: 20s;"></div>
+                        <div class="absolute inset-4 rounded-full border border-[var(--accent)]/40 animate-spin" style="animation-duration: 15s; animation-direction: reverse;"></div>
+                        <div class="absolute inset-8 rounded-full border border-[var(--accent)]/60 flex items-center justify-center">
+                            <div class="w-32 h-32 rounded-full bg-[var(--bg)] border border-[var(--accent)]/40 flex items-center justify-center ai-core">
+                                <i class="fa-solid fa-shield-halved text-4xl text-[var(--accent)]"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section class="relative py-40 overflow-hidden">
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[80%] bg-[var(--accent)] opacity-10 blur-[150px] rounded-full"></div>
+        
+        <div class="max-w-[1400px] mx-auto px-6 lg:px-10 text-center relative z-10">
+            <div class="reveal">
+                <h2 class="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tighter text-gradient mb-6">
+                    Your Next Customer Could Be <br> One Message Away.
+                </h2>
+                <p class="text-lg text-[var(--text-dim)] max-w-2xl mx-auto mb-10">
+                    Turn social engagement into automated conversations, qualified leads and sales.
+                </p>
+                <div class="flex flex-wrap gap-4 justify-center">
+                    <button class="btn-primary px-8 py-4 rounded-lg text-sm flex items-center gap-2">
+                        Start Building <i class="fa-solid fa-arrow-right text-xs"></i>
+                    </button>
+                    <button class="btn-secondary px-8 py-4 rounded-lg text-sm">See a Live Demo</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="border-t border-[var(--border)] py-12 bg-[var(--bg-2)]">
+        <div class="max-w-[1400px] mx-auto px-6 lg:px-10 grid md:grid-cols-4 gap-8">
+            <div>
+                <div class="flex items-center gap-2 mb-4">
+                    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00E5FF] to-[#7B2CBF] flex items-center justify-center">
+                        <i class="fa-solid fa-bolt text-black text-sm"></i>
+                    </div>
+                    <span class="display font-bold text-lg">X.Solum</span>
+                </div>
+                <p class="text-xs text-[var(--text-dim)]">The Operating System for AI-Powered WhatsApp Sales.</p>
+            </div>
+            <div>
+                <div class="text-xs font-semibold mb-3 text-white">Product</div>
+                <ul class="space-y-2 text-xs text-[var(--text-dim)]">
+                    <li><a href="#" class="hover:text-white">AI Sales Agent</a></li>
+                    <li><a href="#" class="hover:text-white">Flow Builder</a></li>
+                    <li><a href="#" class="hover:text-white">WhatsApp CRM</a></li>
+                </ul>
+            </div>
+            <div>
+                <div class="text-xs font-semibold mb-3 text-white">Use Cases</div>
+                <ul class="space-y-2 text-xs text-[var(--text-dim)]">
+                    <li><a href="#" class="hover:text-white">Real Estate</a></li>
+                    <li><a href="#" class="hover:text-white">Education</a></li>
+                    <li><a href="#" class="hover:text-white">D2C Brands</a></li>
+                </ul>
+            </div>
+            <div>
+                <div class="text-xs font-semibold mb-3 text-white">Resources</div>
+                <ul class="space-y-2 text-xs text-[var(--text-dim)]">
+                    <li><a href="#" class="hover:text-white">Documentation</a></li>
+                    <li><a href="#" class="hover:text-white">API Reference</a></li>
+                    <li><a href="#" class="hover:text-white">Status</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="max-w-[1400px] mx-auto px-6 lg:px-10 mt-12 pt-8 border-t border-[var(--border)] flex justify-between items-center">
+            <div class="text-xs text-[var(--text-dim)]">© 2025 X.Solum AI. All rights reserved.</div>
+            <div class="flex gap-4 text-[var(--text-dim)]">
+                <a href="#" class="hover:text-white"><i class="fa-brands fa-x-twitter"></i></a>
+                <a href="#" class="hover:text-white"><i class="fa-brands fa-linkedin"></i></a>
+                <a href="#" class="hover:text-white"><i class="fa-brands fa-github"></i></a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Three.js Background Animation
+        const canvas = document.getElementById('bg-canvas');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        // Create particle system
+        const particleGeometry = new THREE.BufferGeometry();
+        const particleCount = 2000;
+        const posArray = new Float32Array(particleCount * 3);
+        
+        for(let i = 0; i < particleCount * 3; i++) {
+            posArray[i] = (Math.random() - 0.5) * 30;
+        }
+        
+        particleGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        
+        // Create lines for neural network effect
+        const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.1 });
+        const lineGeometry = new THREE.BufferGeometry();
+        const linePositions = [];
+        
+        // Generate random connections
+        for(let i = 0; i < 50; i++) {
+            const x1 = (Math.random() - 0.5) * 20;
+            const y1 = (Math.random() - 0.5) * 20;
+            const z1 = (Math.random() - 0.5) * 20;
+            const x2 = (Math.random() - 0.5) * 20;
+            const y2 = (Math.random() - 0.5) * 20;
+            const z2 = (Math.random() - 0.5) * 20;
+            linePositions.push(x1, y1, z1, x2, y2, z2);
+        }
+        
+        lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
+        const lines = new THREE.LineSegments(lineGeometry, lineMaterial);
+        scene.add(lines);
+
+        const particleMaterial = new THREE.PointsMaterial({
+            size: 0.02,
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.8
+        });
+        
+        const particles = new THREE.Points(particleGeometry, particleMaterial);
+        scene.add(particles);
+        
+        camera.position.z = 5;
+
+        let mouseX = 0, mouseY = 0;
+        document.addEventListener('mousemove', (e) => {
+            mouseX = (e.clientX / window.innerWidth - 0.5) * 0.5;
+            mouseY = (e.clientY / window.innerHeight - 0.5) * 0.5;
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            particles.rotation.x += 0.0005;
+            particles.rotation.y += 0.0005;
+            lines.rotation.x += 0.0002;
+            lines.rotation.y += 0.0002;
+            
+            // Camera parallax
+            camera.position.x += (mouseX - camera.position.x) * 0.05;
+            camera.position.y += (-mouseY - camera.position.y) * 0.05;
+            camera.lookAt(scene.position);
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Navbar Scroll Effect
+        const navbar = document.getElementById('navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 50) {
+                navbar.classList.add('glass', 'shadow-lg');
+            } else {
+                navbar.classList.remove('glass', 'shadow-lg');
+            }
+        });
+
+        // Scroll Reveal Animations
+        const revealElements = document.querySelectorAll('.reveal');
+        const revealObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, { threshold: 0.1 });
+
+        revealElements.forEach(el => revealObserver.observe(el));
+
+        // Live Demo Chat Animation
+        const chatContainer = document.getElementById('chat-container');
+        const scoreBar = document.getElementById('score-bar');
+        const scoreNumber = document.getElementById('score-number');
+        const scoreAttributes = document.getElementById('score-attributes');
+        
+        const chatScript = [
+            { text: "Is this available in Mumbai?", sender: 'lead' },
+            { text: "Yes. We currently have availability in Mumbai. Are you looking for this for personal use or investment?", sender: 'ai' },
+            { text: "Investment.", sender: 'lead' },
+            { text: "Got it. What's your approximate investment range?", sender: 'ai' },
+            { text: "₹2–3 Cr.", sender: 'lead' },
+        ];
+
+        const demoObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    runChatDemo();
+                    demoObserver.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.5 });
+
+        function runChatDemo() {
+            chatContainer.innerHTML = '';
+            let delay = 0;
+            chatScript.forEach((msg, index) => {
+                setTimeout(() => {
+                    const bubble = document.createElement('div');
+                    bubble.className = `chat-bubble-enter p-3 rounded-xl text-sm w-fit max-w-[80%] ${msg.sender === 'lead' ? 'bg-white/5 rounded-tl-none' : 'bg-[var(--wa)]/20 rounded-tr-none ml-auto'}`;
+                    bubble.textContent = msg.text;
+                    chatContainer.appendChild(bubble);
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+
+                    // Update score on last message
+                    if (index === chatScript.length - 1) {
+                        setTimeout(() => {
+                            let score = 0;
+                            const target = 82;
+                            const interval = setInterval(() => {
+                                if (score < target) {
+                                    score++;
+                                    scoreNumber.textContent = score;
+                                    scoreBar.style.width = (score / 100 * 100) + '%';
+                                } else {
+                                    clearInterval(interval);
+                                    scoreAttributes.classList.remove('opacity-0');
+                                }
+                            }, 20);
+                        }, 500);
+                    }
+                }, delay);
+                delay += 1200;
+            });
+        }
+
+        const demoSection = document.getElementById('chat-container');
+        if (demoSection) demoObserver.observe(demoSection);
+
+        // Number Counters Animation
+        const statNumbers = document.querySelectorAll('.stat-number');
+        const statObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const target = parseInt(entry.target.getAttribute('data-target'));
+                    let current = 0;
+                    const increment = target / 50;
+                    const interval = setInterval(() => {
+                        current += increment;
+                        if (current >= target) {
+                            entry.target.textContent = target.toLocaleString();
+                            clearInterval(interval);
+                        } else {
+                            entry.target.textContent = Math.floor(current).toLocaleString();
+                        }
+                    }, 30);
+                    statObserver.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.5 });
+
+        statNumbers.forEach(el => statObserver.observe(el));
+
+        // Magnetic Buttons
+        document.querySelectorAll('.btn-primary, .btn-secondary').forEach(btn => {
+            btn.addEventListener('mousemove', (e) => {
+                const rect = btn.getBoundingClientRect();
+                const x = e.clientX - rect.left - rect.width / 2;
+                const y = e.clientY - rect.top - rect.height / 2;
+                btn.style.transform = `translate(${x * 0.15}px, ${y * 0.15}px)`;
+            });
+            btn.addEventListener('mouseleave', () => {
+                btn.style.transform = 'translate(0, 0)';
+            });
+        });
+    </script>
+</body>
+</html>
