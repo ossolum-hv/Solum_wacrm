@@ -40,7 +40,8 @@
     "menuProfile": "Profile",
     "menuSettings": "Settings",
     "menuSignOut": "Sign out",
-    "adminUsers": "User Management"
+    "adminUsers": "User Management",
+    "adminLeads": "Leads"
   },
   "Header": {
     "dashboard": "Dashboard",

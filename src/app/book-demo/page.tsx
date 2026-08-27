@@ -54,18 +54,17 @@ export default function BookDemoPage() {
     setLoading(true);
 
     try {
-      // TODO: Replace with actual API endpoint when backend is ready
-      // For now, simulate a successful submission
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const res = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
 
-      // In production, send to your API:
-      // const res = await fetch("/api/leads", {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify(formData),
-      // });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload.error || "Failed to submit");
+      }
 
-      console.log("Lead submitted:", formData);
       setSubmitted(true);
       toast.success("Demo request submitted! We'll contact you soon.");
     } catch (error) {

@@ -10,6 +10,7 @@ import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import {
   Bell,
   Bot,
+  Calendar,
   Crown,
   GitBranch,
   LayoutDashboard,
@@ -110,6 +111,7 @@ const bottomNavItems = [
 // Superadmin-only navigation items
 const superadminNavItems = [
   { href: "/admin/users", labelKey: "adminUsers", icon: UsersRound },
+  { href: "/admin/leads", labelKey: "adminLeads", icon: Calendar },
 ];
 
 interface SidebarProps {
