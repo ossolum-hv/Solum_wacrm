@@ -6,6 +6,7 @@ import { getStaggerDelay } from "@/lib/animations";
 import {
   Zap,
   ArrowRight,
+  Calendar,
   Brain,
   Shield,
   UserPlus,
@@ -28,7 +29,6 @@ import {
   Database,
   XCircle,
   CreditCard,
-  Calendar,
   Megaphone,
   Crown,
   Clock,
@@ -232,9 +232,14 @@ function Navigation() {
           <a href="#" className="hover:text-white transition-colors">Pricing</a>
         </div>
 
-        <Link href="/login" className="lp-btn-primary px-5 py-2.5 rounded-lg text-sm">
-          Get Started
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link href="/book-demo" className="px-4 py-2 rounded-lg text-sm border border-white/20 hover:bg-white/5 transition-colors">
+            Book Demo
+          </Link>
+          <Link href="/login" className="lp-btn-primary px-5 py-2.5 rounded-lg text-sm">
+            Get Started
+          </Link>
+        </div>
       </div>
     </nav>
   );
@@ -1220,7 +1225,9 @@ export default function HomePage() {
             <Link href="/login" className="btn-primary px-8 py-4 rounded-lg text-sm flex items-center gap-2">
               Start Building <ArrowRight className="w-3 h-3" />
             </Link>
-            <button className="btn-secondary px-8 py-4 rounded-lg text-sm">See a Live Demo</button>
+            <Link href="/book-demo" className="btn-secondary px-8 py-4 rounded-lg text-sm inline-flex items-center gap-2">
+              Book Demo <Calendar className="w-4 h-4" />
+            </Link>
           </div>
         </div>
       </section>
