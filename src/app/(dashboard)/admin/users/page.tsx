@@ -109,23 +109,6 @@ export default function AdminUsersPage() {
   const t = useTranslations('Admin.users');
   const { isSuperadmin, user } = useAuth();
 
-  // Gate: only superadmins can access this page
-  if (!isSuperadmin) {
-    return (
-      <div className="flex min-h-screen items-center justify-center px-4">
-        <Card className="w-full max-w-md">
-          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <AlertTriangle className="size-12 text-amber-400" />
-            <h2 className="mt-4 text-xl font-semibold">Access Denied</h2>
-            <p className="mt-2 text-muted-foreground">
-              You must be a platform superadmin to access this page.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   const [users, setUsers] = useState<User[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -175,6 +158,23 @@ export default function AdminUsersPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Gate: only superadmins can access this page
+  if (!isSuperadmin) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+            <AlertTriangle className="size-12 text-amber-400" />
+            <h2 className="mt-4 text-xl font-semibold">Access Denied</h2>
+            <p className="mt-2 text-muted-foreground">
+              You must be a platform superadmin to access this page.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

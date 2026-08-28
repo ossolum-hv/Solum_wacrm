@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server'
-import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { NextResponse } from "next/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/server";
 
-export const dynamic = 'force-dynamic'
+export const dynamic = "force-dynamic";
 
 /** Guards: only accessible when no superadmin exists yet. */
 async function requireNoSuperadmin(): Promise<boolean> {

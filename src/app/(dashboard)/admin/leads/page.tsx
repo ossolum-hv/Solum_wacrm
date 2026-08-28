@@ -60,21 +60,6 @@ function fmtDate(iso: string): string {
 
 export default function AdminLeadsPage() {
   const { isSuperadmin } = useAuth();
-
-  if (!isSuperadmin) {
-    return (
-      <div className="flex min-h-screen items-center justify-center px-4">
-        <div className="w-full max-w-md text-center">
-          <AlertTriangle className="size-12 mx-auto text-amber-400 mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
-          <p className="text-muted-foreground">
-            Only superadmins can view leads.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -117,6 +102,20 @@ export default function AdminLeadsPage() {
   useEffect(() => {
     loadLeads();
   }, [loadLeads]);
+
+  if (!isSuperadmin) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <div className="w-full max-w-md text-center">
+          <AlertTriangle className="size-12 mx-auto text-amber-400 mb-4" />
+          <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
+          <p className="text-muted-foreground">
+            Only superadmins can view leads.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const updateStatus = async (leadId: string, newStatus: Lead["status"]) => {
     setUpdating(leadId);
