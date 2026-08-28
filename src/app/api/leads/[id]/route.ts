@@ -31,8 +31,23 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    
+    // First try to get user from Authorization header (for client-side calls)
+    let user = null;
+    const authHeader = request.headers.get("authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.slice(7);
+      const admin = supabaseAdmin();
+      const { data: { user: authUser } } = await admin.auth.getUser(token);
+      user = authUser;
+    }
+    
+    // Fallback to cookie-based auth (for SSR)
+    if (!user) {
+      const supabase = await createClient();
+      const { data: { user: cookieUser } } = await supabase.auth.getUser();
+      user = cookieUser;
+    }
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -76,8 +91,23 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    
+    // First try to get user from Authorization header (for client-side calls)
+    let user = null;
+    const authHeader = request.headers.get("authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.slice(7);
+      const admin = supabaseAdmin();
+      const { data: { user: authUser } } = await admin.auth.getUser(token);
+      user = authUser;
+    }
+    
+    // Fallback to cookie-based auth (for SSR)
+    if (!user) {
+      const supabase = await createClient();
+      const { data: { user: cookieUser } } = await supabase.auth.getUser();
+      user = cookieUser;
+    }
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
