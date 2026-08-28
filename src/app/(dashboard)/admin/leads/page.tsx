@@ -59,7 +59,7 @@ function fmtDate(iso: string): string {
 }
 
 export default function AdminLeadsPage() {
-  const { isSuperadmin } = useAuth();
+  const { isSuperadmin, profileLoading } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -102,6 +102,15 @@ export default function AdminLeadsPage() {
   useEffect(() => {
     loadLeads();
   }, [loadLeads]);
+
+  // Wait for profile to load before checking superadmin status
+  if (profileLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <Loader2 className="size-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   if (!isSuperadmin) {
     return (

@@ -107,7 +107,7 @@ function fmtDate(iso: string): string {
 
 export default function AdminUsersPage() {
   const t = useTranslations('Admin.users');
-  const { isSuperadmin, user } = useAuth();
+  const { isSuperadmin, user, profileLoading } = useAuth();
 
   const [users, setUsers] = useState<User[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -158,6 +158,15 @@ export default function AdminUsersPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Wait for profile to load before checking superadmin status
+  if (profileLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <Loader2 className="size-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   // Gate: only superadmins can access this page
   if (!isSuperadmin) {
