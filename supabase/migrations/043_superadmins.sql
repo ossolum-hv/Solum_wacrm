@@ -54,5 +54,11 @@ CREATE POLICY "Superadmins can delete"
 -- Index for fast lookup
 CREATE INDEX IF NOT EXISTS idx_superadmins_user_id ON superadmins(user_id);
 
+-- Allow users to check their own superadmin status (needed for client-side auth)
+CREATE POLICY "Users can check own superadmin status"
+  ON superadmins
+  FOR SELECT
+  USING (user_id = auth.uid());
+
 -- Comment
 COMMENT ON TABLE superadmins IS 'Platform superadmins who can create/manage accounts and users. Outside account tenancy.';

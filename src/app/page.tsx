@@ -433,7 +433,7 @@ export default function HomePage() {
   useScrollReveal(0.1);
 
   return (
-    <div className="relative min-h-screen lp-root" style={{ background: "var(--bg)", color: "var(--text)" }}>
+<div className="relative min-h-screen lp-root" style={{ background: "var(--bg)", color: "var(--text)" }}>
       <ThreeBackground />
 
       {/* Navigation */}
