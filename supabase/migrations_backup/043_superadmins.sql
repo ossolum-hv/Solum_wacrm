@@ -18,13 +18,18 @@ CREATE POLICY "Service role full access"
   WITH CHECK (auth.role() = 'service_role');
 
 -- Superadmins can read all superadmins
+-- Use a security definer function to avoid infinite recursion
 CREATE POLICY "Superadmins can read"
   ON superadmins
   FOR SELECT
   USING (
     EXISTS (
-      SELECT 1 FROM superadmins sa
-      WHERE sa.user_id = auth.uid()
+      SELECT 1 FROM auth.users u
+      WHERE u.id = auth.uid()
+      AND EXISTS (
+        SELECT 1 FROM superadmins sa
+        WHERE sa.user_id = u.id
+      )
     )
   );
 

@@ -27,6 +27,7 @@ import {
   Workflow,
   X,
   Zap,
+  UserCheck,
 } from "lucide-react";
 import type { AccountRole } from "@/lib/auth/roles";
 
@@ -108,12 +109,6 @@ const bottomNavItems = [
   { href: "/settings", labelKey: "settings", icon: Settings },
 ];
 
-// Superadmin-only navigation items
-const superadminNavItems = [
-  { href: "/admin/users", labelKey: "adminUsers", icon: UsersRound },
-  { href: "/admin/leads", labelKey: "adminLeads", icon: Calendar },
-];
-
 interface SidebarProps {
   /** Controlled on mobile by the Header's hamburger button. Ignored on lg+. */
   open?: boolean;
@@ -125,7 +120,7 @@ import { useTranslations } from "next-intl";
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const t = useTranslations("Sidebar");
   const pathname = usePathname();
-  const { profile, profileLoading, account, accountRole, signOut, isSuperadmin } = useAuth();
+  const { profile, profileLoading, account, accountRole, signOut, canManageLeads } = useAuth();
   const totalUnread = useTotalUnread();
   const unreadNotifications = useUnreadNotifications();
   // Only surface the account-name strip when it actually carries
@@ -275,37 +270,26 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                 </li>
               );
             })}
+            {/* Leads nav item — only for users who can manage leads (admin+) */}
+            {!profileLoading && canManageLeads && (
+              <li>
+                <Link
+                  href="/leads"
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                    pathname === "/leads" || pathname.startsWith("/leads/")
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  <UserCheck className="h-4 w-4" />
+                  <span className="flex-1">{t("leads")}</span>
+                </Link>
+              </li>
+            )}
           </ul>
 
           <div className="my-4 border-t border-border" />
-
-          {/* Superadmin navigation */}
-          {isSuperadmin && (
-            <>
-              <ul className="flex flex-col gap-1">
-                {superadminNavItems.map((item) => {
-                  const isActive = pathname.startsWith(item.href);
-                  return (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href}
-                        className={cn(
-                          "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
-                          isActive
-                            ? "bg-amber-500/10 text-amber-400"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                        )}
-                      >
-                        <item.icon className="h-4 w-4" />
-                        {t(item.labelKey as string)}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-              <div className="my-4 border-t border-border" />
-            </>
-          )}
 
           <ul className="flex flex-col gap-1">
             {bottomNavItems.map((item) => {

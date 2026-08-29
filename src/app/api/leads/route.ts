@@ -2,13 +2,14 @@
 // /api/leads
 //
 //   POST — Create a new lead (public)
-//   GET  — List leads (authenticated, user can see their assigned leads)
-//
+//   GET  — List leads (authenticated, admin+ can see all leads in account)
+//   PATCH — Update lead status (authenticated, admin+)
 // ============================================================
 
 import { NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { canManageLeads as canManageLeadsCheck } from "@/lib/auth/roles";
 
 // Lazy-initialised service-role client
 let _adminClient: ReturnType<typeof createAdminClient> | null = null;
@@ -110,57 +111,84 @@ export async function POST(request: Request) {
   }
 }
 
+async function getAuthenticatedUser(request: Request) {
+  // First try to get user from Authorization header (for client-side calls)
+  let user = null;
+  const authHeader = request.headers.get("authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    const token = authHeader.slice(7);
+    const admin = supabaseAdmin();
+    const { data: { user: authUser } } = await admin.auth.getUser(token);
+    user = authUser;
+  }
+
+  // Fallback to cookie-based auth (for SSR)
+  if (!user) {
+    const supabase = await createClient();
+    const { data: { user: cookieUser } } = await supabase.auth.getUser();
+    user = cookieUser;
+  }
+
+  return user;
+}
+
+async function getUserAccountRole(userId: string): Promise<{ accountId: string | null; accountRole: string | null }> {
+  const admin = supabaseAdmin();
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("account_id, account_role")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  // Type assertion for profile fields that exist in DB but not in generated types
+  const accountId = (profile as { account_id: string | null } | null)?.account_id ?? null;
+  const accountRole = (profile as { account_role: string | null } | null)?.account_role ?? null;
+
+  return {
+    accountId,
+    accountRole,
+  };
+}
+
 export async function GET(request: Request) {
   try {
-    // First try to get user from Authorization header (for client-side calls)
-    let user = null;
-    const authHeader = request.headers.get("authorization");
-    if (authHeader?.startsWith("Bearer ")) {
-      const token = authHeader.slice(7);
-      const admin = supabaseAdmin();
-      const { data: { user: authUser } } = await admin.auth.getUser(token);
-      user = authUser;
-    }
-    
-    // Fallback to cookie-based auth (for SSR)
-    if (!user) {
-      const supabase = await createClient();
-      const { data: { user: cookieUser } } = await supabase.auth.getUser();
-      user = cookieUser;
-    }
+    const user = await getAuthenticatedUser(request);
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check if user is superadmin
-    const admin = supabaseAdmin();
-    const { data: isSuperadmin } = await admin
-      .from("superadmins")
-      .select("id")
-      .eq("user_id", user.id)
-      .limit(1);
+    // Get user's account and role
+    const { accountId, accountRole } = await getUserAccountRole(user.id);
 
-    const isSuper = !!isSuperadmin && isSuperadmin.length > 0;
+    if (!accountId || !accountRole || !canManageLeadsCheck(accountRole as "owner" | "admin" | "agent" | "viewer")) {
+      return NextResponse.json({ error: "Forbidden: insufficient permissions" }, { status: 403 });
+    }
 
     const url = new URL(request.url);
     const status = url.searchParams.get("status");
+    const search = url.searchParams.get("search");
+    const sort = url.searchParams.get("sort") || "created_at";
+    const order = url.searchParams.get("order") || "desc";
     const limit = parseInt(url.searchParams.get("limit") || "50");
     const offset = parseInt(url.searchParams.get("offset") || "0");
 
+    const admin = supabaseAdmin();
+
+    // Admin+ users see all leads in their account
     let query = admin
       .from("leads")
       .select("*", { count: "exact" })
-      .order("created_at", { ascending: false })
+      .eq("account_id", accountId)
+      .order(sort, { ascending: order === "asc" })
       .range(offset, offset + limit - 1);
 
     if (status) {
       query = query.eq("status", status);
     }
 
-    // Non-superadmins only see their assigned or unassigned leads
-    if (!isSuper) {
-      query = query.or(`assigned_to_user_id.eq.${user.id},assigned_to_user_id.is.null`);
+    if (search) {
+      query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,company_name.ilike.%${search}%`);
     }
 
     const { data: leads, error, count } = await query;
@@ -181,6 +209,74 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     console.error("[GET /api/leads] error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const user = await getAuthenticatedUser(request);
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get user's account and role
+    const { accountId, accountRole } = await getUserAccountRole(user.id);
+
+    if (!accountId || !accountRole || !canManageLeadsCheck(accountRole as "owner" | "admin" | "agent" | "viewer")) {
+      return NextResponse.json({ error: "Forbidden: insufficient permissions" }, { status: 403 });
+    }
+
+    const body = await request.json().catch(() => null);
+    const { id, status } = body as { id: string; status: string };
+
+    if (!id || !status) {
+      return NextResponse.json({ error: "Missing id or status" }, { status: 400 });
+    }
+
+    const validStatuses = ["new", "contacted", "qualified", "converted", "lost"];
+    if (!validStatuses.includes(status)) {
+      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+    }
+
+    const admin = supabaseAdmin();
+
+    // Verify the lead belongs to the user's account
+    const { data: lead, error: leadError } = await admin
+      .from("leads")
+      .select("id, account_id")
+      .eq("id", id)
+      .single();
+
+    if (leadError || !lead) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    // Type assertion for lead fields that exist in DB but not in generated types
+    const leadAccountId = (lead as { account_id: string | null }).account_id;
+
+    if (leadAccountId !== accountId) {
+      return NextResponse.json({ error: "Forbidden: lead not in your account" }, { status: 403 });
+    }
+
+    // Update the lead status
+    const { error: updateError } = await (admin
+      .from("leads") as any)
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq("id", id);
+
+    if (updateError) {
+      console.error("[PATCH /api/leads] error:", updateError);
+      return NextResponse.json({ error: "Failed to update lead" }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[PATCH /api/leads] error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

@@ -43,6 +43,44 @@
     "adminUsers": "User Management",
     "adminLeads": "Leads"
   },
+  "Leads": {
+    "title": "Landing Page Leads",
+    "description": "Leads submitted through the Book Demo form on your landing page.",
+    "refresh": "Refresh",
+    "search": {
+      "placeholder": "Search by name, email, company..."
+    },
+    "filter": {
+      "status": "Status",
+      "allStatuses": "All statuses"
+    },
+    "status": {
+      "new": "New",
+      "contacted": "Contacted",
+      "qualified": "Qualified",
+      "converted": "Converted",
+      "lost": "Lost"
+    },
+    "table": {
+      "name": "Name",
+      "email": "Email",
+      "company": "Company",
+      "phone": "Phone",
+      "status": "Status",
+      "source": "Source",
+      "createdAt": "Created",
+      "actions": "Actions"
+    },
+    "emptyState": "No leads yet. Book Demo form submissions will appear here.",
+    "pagination": {
+      "showing": "Showing {start}–{end} of {total}"
+    },
+    "toast": {
+      "failedLoad": "Failed to load leads",
+      "statusUpdated": "Status updated",
+      "failedStatusUpdate": "Failed to update status"
+    }
+  },
   "Header": {
     "dashboard": "Dashboard",
     "inbox": "Inbox",
