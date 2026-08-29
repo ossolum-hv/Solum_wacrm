@@ -41,7 +41,8 @@
     "menuSettings": "Settings",
     "menuSignOut": "Sign out",
     "adminUsers": "User Management",
-    "adminLeads": "Leads"
+    "adminLeads": "Leads",
+    "leads": "BookDemo Leads"
   },
   "Leads": {
     "title": "Landing Page Leads",
