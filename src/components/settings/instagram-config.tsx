@@ -59,8 +59,6 @@ type InstagramConfigRow = {
   ig_business_id: string;
   ig_username: string;
   page_id: string;
-  page_access_token: string;
-  verify_token: string;
   status: 'connected' | 'disconnected' | 'expired';
   webhook_subscribed: boolean;
   connected_at: string;
@@ -83,10 +81,14 @@ type InstagramKeywordLinkRow = {
 
 export function InstagramConfig() {
   const { user, accountId, loading: authLoading, profileLoading, canEditSettings } = useAuth();
+  const hasUser = Boolean(user);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [oauthBusy, setOauthBusy] = useState(false);
+  const [webhookBusy, setWebhookBusy] = useState(false);
+  const [webhookActionMessage, setWebhookActionMessage] = useState<string | null>(null);
+  const [oauthMessage, setOauthMessage] = useState<string | null>(null);
   const [health, setHealth] = useState<InstagramHealth | null>(null);
   const [config, setConfig] = useState<InstagramConfigRow | null>(null);
   const [links, setLinks] = useState<InstagramKeywordLinkRow[]>([]);
@@ -95,7 +97,6 @@ export function InstagramConfig() {
   const [pageId, setPageId] = useState('');
   const [pageAccessToken, setPageAccessToken] = useState('');
   const [verifyToken, setVerifyToken] = useState('');
-  const [webhookSubscribed, setWebhookSubscribed] = useState(true);
   const [keywordDraft, setKeywordDraft] = useState(emptyKeywordForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [linkSaving, setLinkSaving] = useState(false);
@@ -134,7 +135,6 @@ export function InstagramConfig() {
         setPageId('');
         setPageAccessToken('');
         setVerifyToken('');
-        setWebhookSubscribed(true);
         return;
       }
 
@@ -146,7 +146,6 @@ export function InstagramConfig() {
         setPageId(data.page_id || '');
         setPageAccessToken('');
         setVerifyToken('');
-        setWebhookSubscribed(Boolean(data.webhook_subscribed));
       } else {
         setConfig(null);
         setIgBusinessId('');
@@ -154,7 +153,6 @@ export function InstagramConfig() {
         setPageId('');
         setPageAccessToken('');
         setVerifyToken('');
-        setWebhookSubscribed(true);
       }
     } catch (error) {
       console.error('Failed to load Instagram config:', error);
@@ -164,7 +162,6 @@ export function InstagramConfig() {
       setPageId('');
       setPageAccessToken('');
       setVerifyToken('');
-      setWebhookSubscribed(true);
     } finally {
       setLoading(false);
     }
@@ -192,7 +189,7 @@ export function InstagramConfig() {
 
   useEffect(() => {
     if (authLoading || profileLoading) return;
-    if (!user || !accountId) {
+    if (!hasUser || !accountId) {
       setLoading(false);
       return;
     }
@@ -200,7 +197,20 @@ export function InstagramConfig() {
     void fetchHealth();
     void fetchConfig();
     void fetchLinks();
-  }, [authLoading, profileLoading, user?.id, accountId, fetchHealth, fetchConfig, fetchLinks]);
+  }, [authLoading, profileLoading, hasUser, accountId, fetchHealth, fetchConfig, fetchLinks]);
+
+  useEffect(() => {
+    const reason = new URLSearchParams(window.location.search).get('oauth');
+    if (!reason) return;
+
+    if (reason === 'multiple_instagram_pages') {
+      setOauthMessage('Meta returned more than one eligible Instagram Page. Grant this app access to only the Page you want to connect, then retry.');
+    } else if (reason === 'missing_instagram_webhook_verify_token') {
+      setOauthMessage('Set INSTAGRAM_WEBHOOK_VERIFY_TOKEN on the server and use the same value in the Meta App Dashboard before connecting.');
+    } else {
+      setOauthMessage(`Instagram OAuth could not complete: ${reason}`);
+    }
+  }, []);
 
   async function handleConnectInstagram() {
     if (!canEditSettings) return;
@@ -235,7 +245,6 @@ export function InstagramConfig() {
         page_id: pageId.trim(),
         page_access_token: pageAccessToken.trim(),
         verify_token: verifyToken.trim(),
-        webhook_subscribed: webhookSubscribed,
       };
 
       if (!payload.ig_business_id || !payload.ig_username || !payload.page_id) {
@@ -256,12 +265,34 @@ export function InstagramConfig() {
       setConfig(result.config as InstagramConfigRow);
       setPageAccessToken('');
       setVerifyToken('');
+      setWebhookActionMessage(result.warning ?? null);
       await fetchHealth();
     } catch (error) {
       console.error('Save Instagram config failed:', error);
       window.alert(error instanceof Error ? error.message : 'Failed to save Instagram configuration.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSubscribeWebhooks() {
+    if (!canEditSettings) return;
+    setWebhookBusy(true);
+    setWebhookActionMessage(null);
+    try {
+      const response = await fetch('/api/instagram/config/subscribe', { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to subscribe Instagram webhooks.');
+      }
+      setWebhookActionMessage('Meta webhook subscription is active for comments and messages.');
+      await fetchHealth();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to subscribe Instagram webhooks.';
+      setWebhookActionMessage(message);
+      console.error('Instagram webhook subscription failed:', error);
+    } finally {
+      setWebhookBusy(false);
     }
   }
 
@@ -351,14 +382,17 @@ export function InstagramConfig() {
     });
   };
 
-  const statusTone = health?.connected ? 'default' : 'outline';
-
   return (
     <div className="space-y-6">
       <SettingsPanelHead
         title="Instagram"
         description="Connect your Instagram Business account and map keywords to WhatsApp deep links."
       />
+      {oauthMessage ? (
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          {oauthMessage}
+        </div>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -392,7 +426,7 @@ export function InstagramConfig() {
                 Webhooks
               </div>
               <div className="mt-2 text-xl font-semibold">
-                {health?.webhookSubscribed ? 'Active' : 'Paused'}
+                {health?.webhookSubscribed ? 'Active' : 'Not active'}
               </div>
             </div>
             <div className="rounded-md border border-border bg-muted/25 p-3">
@@ -432,9 +466,20 @@ export function InstagramConfig() {
             {health?.webhookSubscribed ? (
               <Badge variant="secondary">Webhook health: healthy</Badge>
             ) : (
-              <Badge variant="outline">Webhook health: paused</Badge>
+              <Badge variant="outline">Webhook health: needs attention</Badge>
             )}
+            {config && !health?.webhookSubscribed ? (
+              <Button variant="outline" onClick={handleSubscribeWebhooks} disabled={webhookBusy || !canEditSettings}>
+                {webhookBusy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Subscribing...</> : 'Subscribe webhooks'}
+              </Button>
+            ) : null}
           </div>
+          {webhookActionMessage || health?.message ? (
+            <p className="text-sm text-muted-foreground">{webhookActionMessage ?? health?.message}</p>
+          ) : null}
+          <p className="text-xs text-muted-foreground">
+            Meta App Dashboard callback and webhook field configuration is also required; this status checks the Page subscription only.
+          </p>
         </CardContent>
       </Card>
 
@@ -495,14 +540,6 @@ export function InstagramConfig() {
                   onChange={(e) => setVerifyToken(e.target.value)}
                   placeholder={config ? 'leave blank to keep the current verify token' : 'paste the Meta webhook verify token'}
                 />
-              </div>
-
-              <div className="flex items-center justify-between rounded-md border border-border bg-muted/25 p-3">
-                <div>
-                  <div className="font-medium text-foreground">Webhook subscription</div>
-                  <div className="text-sm text-muted-foreground">Keep the subscription enabled so Meta delivers comments and DMs.</div>
-                </div>
-                <Switch checked={webhookSubscribed} onCheckedChange={setWebhookSubscribed} disabled={!canEditSettings} />
               </div>
 
               <div className="flex justify-end">

@@ -1,10 +1,36 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
+import {
+  ForbiddenError,
+  requireRole,
+  toErrorResponse,
+  UnauthorizedError,
+} from '@/lib/auth/account'
 import { decrypt, encrypt } from '@/lib/whatsapp/encryption'
-import { verifyInstagramPageToken } from '@/lib/instagram/meta-api'
+import {
+  subscribeInstagramPageWebhooks,
+  verifyInstagramPageToken,
+} from '@/lib/instagram/meta-api'
 
-let _adminClient: any = null
+type InstagramConfigClaimDatabase = {
+  public: {
+    Tables: {
+      instagram_config: {
+        Row: { account_id: string; ig_business_id: string }
+        Insert: { account_id: string; ig_business_id: string }
+        Update: { account_id?: string; ig_business_id?: string }
+        Relationships: []
+      }
+    }
+    Views: { [_ in never]: never }
+    Functions: { [_ in never]: never }
+    Enums: { [_ in never]: never }
+    CompositeTypes: { [_ in never]: never }
+  }
+}
+
+let _adminClient: ReturnType<typeof createAdminClient<InstagramConfigClaimDatabase>> | null = null
 function supabaseAdmin() {
   if (!_adminClient) {
     _adminClient = createAdminClient(
@@ -33,6 +59,36 @@ function requireString(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
   return trimmed || null
+}
+
+function configForClient(config: {
+  id: string
+  account_id: string
+  user_id: string
+  ig_business_id: string
+  ig_username: string
+  page_id: string
+  status: string
+  webhook_subscribed: boolean
+  connected_at: string
+  created_at: string
+  updated_at: string
+  last_synced_at: string | null
+}) {
+  return {
+    id: config.id,
+    account_id: config.account_id,
+    user_id: config.user_id,
+    ig_business_id: config.ig_business_id,
+    ig_username: config.ig_username,
+    page_id: config.page_id,
+    status: config.status,
+    webhook_subscribed: config.webhook_subscribed,
+    connected_at: config.connected_at,
+    created_at: config.created_at,
+    updated_at: config.updated_at,
+    last_synced_at: config.last_synced_at,
+  }
 }
 
 export async function GET() {
@@ -91,7 +147,7 @@ export async function GET() {
         igBusinessId: config.ig_business_id,
         accessToken: token,
       })
-      return NextResponse.json({ connected: true, config })
+      return NextResponse.json({ connected: true, config: configForClient(config) })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown Meta API error'
       console.error('[instagram/config GET] Meta validation failed:', message)
@@ -115,23 +171,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const accountId = await resolveAccountId(supabase, user.id)
-    if (!accountId) {
-      return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
-        { status: 403 }
-      )
-    }
+    const { supabase, accountId, userId } = await requireRole('admin')
 
     const body = await request.json().catch(() => null)
     if (!body || typeof body !== 'object') {
@@ -142,8 +182,7 @@ export async function POST(request: Request) {
     const igUsername = requireString(body.ig_username)
     const pageId = requireString(body.page_id)
     const pageAccessToken = requireString(body.page_access_token)
-    const verifyToken = requireString(body.verify_token)
-    const webhookSubscribed = body.webhook_subscribed === undefined ? true : Boolean(body.webhook_subscribed)
+    const providedVerifyToken = requireString(body.verify_token)
 
     if (!igBusinessId || !igUsername || !pageId) {
       return NextResponse.json(
@@ -152,7 +191,14 @@ export async function POST(request: Request) {
       )
     }
 
-    let currentConfig: any = null
+    const configuredVerifyToken = process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN
+    if (configuredVerifyToken && providedVerifyToken && providedVerifyToken !== configuredVerifyToken) {
+      return NextResponse.json(
+        { error: 'Use the shared INSTAGRAM_WEBHOOK_VERIFY_TOKEN configured for the Meta App Dashboard.' },
+        { status: 400 }
+      )
+    }
+
     const { data: existing, error: existingError } = await supabase
       .from('instagram_config')
       .select('*')
@@ -163,7 +209,7 @@ export async function POST(request: Request) {
       console.error('[instagram/config POST] Existing lookup failed:', existingError)
       return NextResponse.json({ error: 'Failed to load current Instagram config.' }, { status: 500 })
     }
-    currentConfig = existing
+    const currentConfig = existing
 
     if (!pageAccessToken && !currentConfig) {
       return NextResponse.json(
@@ -180,7 +226,7 @@ export async function POST(request: Request) {
       )
     }
 
-    if (!verifyToken && !currentConfig?.verify_token) {
+    if (!configuredVerifyToken && !providedVerifyToken && !currentConfig?.verify_token) {
       return NextResponse.json(
         { error: 'verify_token is required for a new configuration.' },
         { status: 400 }
@@ -222,11 +268,29 @@ export async function POST(request: Request) {
       )
     }
 
+    let webhookSubscribed = false
+    let webhookWarning: string | undefined
+    const appId = process.env.META_APP_ID
+    if (!appId) {
+      webhookWarning = 'META_APP_ID is not configured, so Meta webhook subscription was not attempted.'
+    } else {
+      try {
+        await subscribeInstagramPageWebhooks({ pageId, accessToken: tokenToValidate })
+        webhookSubscribed = true
+      } catch (error) {
+        webhookWarning = error instanceof Error ? error.message : 'Meta webhook subscription failed.'
+        console.error('[instagram/config POST] Webhook subscription failed:', webhookWarning)
+      }
+    }
+
     const encryptedToken = encrypt(tokenToValidate)
-    const encryptedVerifyToken = verifyToken ? encrypt(verifyToken) : currentConfig?.verify_token ?? encrypt('')
+    const verifyToken = configuredVerifyToken ?? providedVerifyToken
+    const encryptedVerifyToken = verifyToken
+      ? encrypt(verifyToken)
+      : currentConfig?.verify_token ?? encrypt('')
     const payload = {
       account_id: accountId,
-      user_id: user.id,
+      user_id: userId,
       ig_business_id: igBusinessId,
       ig_username: igUsername,
       page_id: pageId,
@@ -258,8 +322,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: result.error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ config: result.data }, { status: 201 })
+    return NextResponse.json({
+      config: configForClient(result.data),
+      warning: webhookWarning,
+    }, { status: 201 })
   } catch (error) {
+    if (error instanceof UnauthorizedError || error instanceof ForbiddenError) {
+      return toErrorResponse(error)
+    }
     console.error('[instagram/config POST] Internal error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

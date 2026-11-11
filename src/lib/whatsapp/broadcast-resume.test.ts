@@ -176,11 +176,17 @@ function recipient(
   id: string,
   phone: string | null,
   params: unknown = ['A123'],
+  whatsappUserId?: string,
 ) {
   return {
     id,
     template_params: params,
-    contact: phone ? { phone } : null,
+    contact: phone || whatsappUserId
+      ? {
+          ...(phone ? { phone } : {}),
+          ...(whatsappUserId ? { whatsapp_user_id: whatsappUserId } : {}),
+        }
+      : null,
   };
 }
 
@@ -222,6 +228,29 @@ describe('planBroadcastResume', () => {
     ]);
     expect(plan.accessToken).toBe('decrypted:tok');
     expect(remaining).toBe(0);
+    expect(unsendable).toBe(0);
+  });
+
+  it('resumes BSUID recipients without treating the identifier as a phone number', async () => {
+    const { plan, unsendable } = await planBroadcastResume(
+      planDb({
+        broadcast: BROADCAST,
+        config: CONFIG,
+        recipients: [recipient('r-bsuid', '', ['A123'], 'bsuid:customer-123')],
+      }),
+      'acct-1',
+      'bc-1',
+      'pending',
+    );
+
+    expect(plan.planned).toEqual([
+      {
+        recipientRowId: 'r-bsuid',
+        phone: '',
+        whatsappUserId: 'bsuid:customer-123',
+        params: ['A123'],
+      },
+    ]);
     expect(unsendable).toBe(0);
   });
 

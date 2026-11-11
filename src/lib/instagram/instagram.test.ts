@@ -1,6 +1,20 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { matchKeyword, buildWaMeDeepLink } from '@/lib/instagram'
 
+type TestKeywordLink = {
+  id: string
+  account_id: string
+  keyword: string
+  wa_prefill_message?: string
+  active: boolean
+  reply_text?: string | null
+  source_type?: 'comment' | 'dm' | 'both'
+}
+
+declare global {
+  var __LINKS__: TestKeywordLink[] | undefined
+}
+
 // Minimal fake admin client that satisfies the parts keyword-matcher uses.
 // We stub supabaseAdmin via module injection isn't needed here; instead we
 // test the deep-link builder (pure) and the matcher's matching logic by
@@ -15,9 +29,9 @@ vi.mock('@/lib/ai/admin-client', () => ({
           eq: (field2: string, value2: boolean) => ({
             order: () => {
               // filter links by account_id and active
-              const all = (globalThis as any).__LINKS__ ?? []
+              const all = globalThis.__LINKS__ ?? []
               const filtered = all.filter(
-                (l: any) => l.account_id === value && l.active === value2
+                (link) => link.account_id === value && link.active === value2
               )
               return { data: filtered, error: null }
             },
@@ -30,7 +44,6 @@ vi.mock('@/lib/ai/admin-client', () => ({
 
 describe('instagram module', () => {
   beforeEach(() => {
-    // @ts-expect-error test hook
     globalThis.__LINKS__ = []
   })
 
@@ -55,7 +68,6 @@ describe('instagram module', () => {
 
   describe('matchKeyword', () => {
     it('matches a keyword contained in comment text (case-insensitive)', async () => {
-      // @ts-expect-error test hook
       globalThis.__LINKS__ = [
         {
           id: '1',
@@ -72,7 +84,6 @@ describe('instagram module', () => {
     })
 
     it('returns no match when nothing matches', async () => {
-      // @ts-expect-error test hook
       globalThis.__LINKS__ = [
         { id: '1', account_id: 'acc1', keyword: 'BUY', active: true, wa_prefill_message: 'x' },
       ]
@@ -82,7 +93,6 @@ describe('instagram module', () => {
     })
 
     it('ignores inactive links', async () => {
-      // @ts-expect-error test hook
       globalThis.__LINKS__ = [
         { id: '1', account_id: 'acc1', keyword: 'BUY', active: false, wa_prefill_message: 'x' },
       ]
@@ -91,12 +101,20 @@ describe('instagram module', () => {
     })
 
     it('scopes matches to the account id', async () => {
-      // @ts-expect-error test hook
       globalThis.__LINKS__ = [
         { id: '1', account_id: 'other', keyword: 'BUY', active: true, wa_prefill_message: 'x' },
       ]
       const result = await matchKeyword('acc1', 'please BUY now')
       expect(result.matched).toBe(false)
+    })
+
+    it('respects the source type configured in Settings', async () => {
+      globalThis.__LINKS__ = [
+        { id: '1', account_id: 'acc1', keyword: 'BUY', source_type: 'comment', active: true, wa_prefill_message: 'x' },
+      ]
+
+      expect((await matchKeyword('acc1', 'BUY', 'dm')).matched).toBe(false)
+      expect((await matchKeyword('acc1', 'BUY', 'comment')).matched).toBe(true)
     })
   })
 })

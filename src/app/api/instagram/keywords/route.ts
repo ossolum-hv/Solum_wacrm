@@ -1,17 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createClient as createAdminClient } from '@supabase/supabase-js'
-
-let _adminClient: any = null
-function supabaseAdmin() {
-  if (!_adminClient) {
-    _adminClient = createAdminClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-  }
-  return _adminClient
-}
+import { ForbiddenError, requireRole, toErrorResponse, UnauthorizedError } from '@/lib/auth/account'
 
 async function resolveAccountId(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -70,20 +59,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const accountId = await resolveAccountId(supabase, user.id)
-    if (!accountId) {
-      return NextResponse.json({ error: 'Your profile is not linked to an account.' }, { status: 403 })
-    }
+    const { supabase, accountId, userId } = await requireRole('admin')
 
     const body = await request.json().catch(() => null)
     if (!body || typeof body !== 'object') {
@@ -105,7 +81,7 @@ export async function POST(request: Request) {
 
     const payload = {
       account_id: accountId,
-      user_id: user.id,
+      user_id: userId,
       keyword,
       wa_prefill_message: waPrefillMessage,
       source_type: sourceType,
@@ -136,6 +112,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ keyword_link: result.data }, { status: 201 })
   } catch (error) {
+    if (error instanceof UnauthorizedError || error instanceof ForbiddenError) {
+      return toErrorResponse(error)
+    }
     console.error('[instagram/keywords POST] Internal error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
@@ -143,20 +122,7 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const accountId = await resolveAccountId(supabase, user.id)
-    if (!accountId) {
-      return NextResponse.json({ error: 'Your profile is not linked to an account.' }, { status: 403 })
-    }
+    const { supabase, accountId } = await requireRole('admin')
 
     const body = await request.json().catch(() => null)
     const id = typeof body?.id === 'string' ? body.id.trim() : null
@@ -164,7 +130,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 })
     }
 
-    const { error } = await supabaseAdmin()
+    const { error } = await supabase
       .from('instagram_keyword_links')
       .delete()
       .eq('id', id)
@@ -177,6 +143,9 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({ ok: true })
   } catch (error) {
+    if (error instanceof UnauthorizedError || error instanceof ForbiddenError) {
+      return toErrorResponse(error)
+    }
     console.error('[instagram/keywords DELETE] Internal error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

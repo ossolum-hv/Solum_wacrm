@@ -59,6 +59,7 @@ export interface CreateBroadcastParams {
 interface PlannedRecipient {
   recipientRowId: string;
   phone: string;
+  whatsappUserId?: string;
   params: string[];
 }
 
@@ -260,7 +261,9 @@ export async function deliverBroadcast(
   plan: BroadcastPlan
 ): Promise<void> {
   for (const recipient of plan.planned) {
-    const variants = phoneVariants(recipient.phone);
+    const variants = recipient.whatsappUserId
+      ? [recipient.whatsappUserId]
+      : phoneVariants(recipient.phone);
     let sentMessageId: string | null = null;
     let lastError: string | null = null;
 

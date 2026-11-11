@@ -4,12 +4,21 @@ import { decrypt, isLegacyFormat, encrypt } from '@/lib/whatsapp/encryption'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { matchKeyword } from '@/lib/instagram/keyword-matcher'
 import { buildWaMeDeepLink } from '@/lib/instagram/deep-link'
+import { isUniqueViolation } from '@/lib/contacts/dedupe'
 import { sendPrivateReply, sendDmReply } from '@/lib/instagram/meta-api'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
+import { verifyPhoneNumber } from '@/lib/whatsapp/meta-api'
+import { reopenClosedConversation } from '@/lib/conversations/reopen'
 import type { InstagramConfig } from '@/types'
+import type {
+  InstagramCommentChange,
+  InstagramMessagingEvent,
+  InstagramWebhookEntry,
+} from '@/lib/instagram/types'
 
 export const maxDuration = 60
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _adminClient: any = null
 function supabaseAdmin() {
   if (!_adminClient) {
@@ -19,27 +28,6 @@ function supabaseAdmin() {
     )
   }
   return _adminClient
-}
-
-
-interface InstagramWebhookEntry {
-  id: string
-  changes: Array<{
-    field: 'messages' | 'comments'
-    value: {
-      messaging_product: 'instagram'
-      comment_id?: string
-      media?: { id: string; comment_count: number }
-      from?: { id: string; username: string }
-      text?: string
-      messages?: Array<{
-        id: string
-        from: { id: string; username: string }
-        text?: string
-        timestamp: string
-      }>
-    }
-  }>
 }
 
 export async function GET(request: Request) {
@@ -56,10 +44,16 @@ export async function GET(request: Request) {
       )
     }
 
+    if (process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN === verifyToken) {
+      return new Response(challenge, {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain' },
+      })
+    }
+
     const { data: configs, error: configError } = await supabaseAdmin()
       .from('instagram_config')
       .select('id, verify_token')
-      .eq('webhook_subscribed', true)
 
     if (configError || !configs) {
       console.error('[instagram-webhook] Error fetching configs for verification:', configError)
@@ -151,28 +145,37 @@ async function processWebhook(body: { entry?: InstagramWebhookEntry[] }) {
   if (!body.entry) return
 
   for (const entry of body.entry) {
-    for (const change of entry.changes) {
-      const field = change.field
+    const { data: config, error: configError } = await supabaseAdmin()
+      .from('instagram_config')
+      .select('*')
+      .eq('ig_business_id', entry.id)
+      .eq('status', 'connected')
+      .maybeSingle()
+
+    if (configError) {
+      console.error('[instagram-webhook] Instagram config lookup failed:', configError)
+      continue
+    }
+    if (!config) continue
+
+    const accessToken = decrypt(config.page_access_token)
+    const whatsappNumber = await getWhatsAppNumber(config.account_id)
+
+    for (const change of entry.changes ?? []) {
       const value = change.value
-
-      const { data: config, error: configError } = await supabaseAdmin()
-        .from('instagram_config')
-        .select('*')
-        .eq('ig_business_id', entry.id)
-        .eq('status', 'connected')
-        .maybeSingle()
-
-      if (configError || !config) continue
-
-      const accessToken = decrypt(config.page_access_token)
-      const whatsappNumber = await getWhatsAppNumber(config.account_id)
-      if (!whatsappNumber) continue
-
-      if (field === 'comments' && value.text && value.from?.id && value.comment_id) {
-        await handleComment(config, accessToken, whatsappNumber, value)
-      } else if (field === 'messages' && value.messages && value.messages.length > 0) {
-        await handleDm(config, accessToken, whatsappNumber, value.messages[0])
+      if (change.field === 'comments' && value.text && value.from?.id && value.comment_id) {
+        await handleComment(config, accessToken, whatsappNumber, {
+          ...value,
+          text: value.text,
+          from: value.from,
+          comment_id: value.comment_id,
+        })
       }
+    }
+
+    for (const event of entry.messaging ?? []) {
+      if (event.message.is_echo || !event.message.text) continue
+      await handleDm(config, accessToken, whatsappNumber, event)
     }
   }
 }
@@ -180,10 +183,14 @@ async function processWebhook(body: { entry?: InstagramWebhookEntry[] }) {
 async function handleComment(
   config: InstagramConfig,
   accessToken: string,
-  whatsappNumber: string,
-  value: any
+  whatsappNumber: string | null,
+  value: InstagramCommentChange['value'] & {
+    text: string
+    comment_id: string
+    from: { id: string; username?: string }
+  }
 ) {
-  const result = await matchKeyword(config.account_id, value.text)
+  const result = await matchKeyword(config.account_id, value.text, 'comment')
   if (!result.matched || !result.keywordLink) return
 
   // Trigger automations for comments (without contact/conversation context)
@@ -199,17 +206,23 @@ async function handleComment(
     console.error('[instagram-webhook] comment automation dispatch failed:', err)
   )
 
-  const deepLink = buildWaMeDeepLink({
-    whatsappNumber,
-    prefillMessage: result.keywordLink.wa_prefill_message,
-  })
+  const deepLink = whatsappNumber
+    ? buildWaMeDeepLink({
+        whatsappNumber,
+        prefillMessage: result.keywordLink.wa_prefill_message,
+      })
+    : null
 
   const replyText = result.keywordLink.reply_text
-    ? `${result.keywordLink.reply_text}\n${deepLink}`
-    : `Here's your link:\n${deepLink}`
+    ? [result.keywordLink.reply_text, deepLink].filter(Boolean).join('\n')
+    : deepLink
+      ? `Here's your link:\n${deepLink}`
+      : null
+  if (!replyText) return
 
   await sendPrivateReply({
-    commentId: value.comment_id!,
+    instagramAccountId: config.ig_business_id,
+    commentId: value.comment_id,
     accessToken,
     message: replyText,
   })
@@ -218,13 +231,14 @@ async function handleComment(
 async function handleDm(
   config: InstagramConfig,
   accessToken: string,
-  whatsappNumber: string,
-  message: any
+  whatsappNumber: string | null,
+  event: InstagramMessagingEvent
 ) {
-  if (!message.text || !message.from?.id) return
+  const message = event.message
+  if (!message.text || !event.sender.id) return
 
-  const igUserId = message.from.id
-  const igUsername = message.from.username || igUserId
+  const igUserId = event.sender.id
+  const igUsername = igUserId
 
   // Find or create a contact for this Instagram user
   const contactId = await findOrCreateInstagramContact(
@@ -236,12 +250,47 @@ async function handleDm(
   if (!contactId) return
 
   // Find or create a conversation for this contact
-  const conversationId = await findOrCreateConversation(
+  const conversation = await findOrCreateConversation(
     config.account_id,
     config.user_id,
     contactId
   )
-  if (!conversationId) return
+  if (!conversation) return
+  const conversationId = conversation.id
+
+  const { data: insertedMessages, error: messageError } = await supabaseAdmin()
+    .from('messages')
+    .upsert(
+      {
+        conversation_id: conversationId,
+        sender_type: 'customer',
+        content_type: 'text',
+        content_text: message.text,
+        message_id: message.mid ?? null,
+        status: 'delivered',
+        created_at: new Date(event.timestamp ?? Date.now()).toISOString(),
+      },
+      { onConflict: 'conversation_id,message_id', ignoreDuplicates: true }
+    )
+    .select('id')
+
+  if (messageError) {
+    console.error('[instagram-webhook] Error persisting inbound DM:', messageError)
+    return
+  }
+  if (message.mid && insertedMessages?.length === 0) return
+
+  const { error: conversationError } = await supabaseAdmin().rpc(
+    'bump_conversation_on_inbound',
+    {
+      p_conversation_id: conversationId,
+      p_last_message_text: message.text,
+    }
+  )
+  if (conversationError) {
+    console.error('[instagram-webhook] Error updating conversation:', conversationError)
+  }
+  await reopenClosedConversation(supabaseAdmin(), conversation)
 
   // Trigger automations with the keyword_match trigger
   // This fires any automations configured to trigger on keywords
@@ -258,19 +307,25 @@ async function handleDm(
   )
 
   // Also check for instagram_keyword_links and send wa.me link if matched
-  const result = await matchKeyword(config.account_id, message.text)
+  const result = await matchKeyword(config.account_id, message.text, 'dm')
   if (!result.matched || !result.keywordLink) return
 
-  const deepLink = buildWaMeDeepLink({
-    whatsappNumber,
-    prefillMessage: result.keywordLink.wa_prefill_message,
-  })
+  const deepLink = whatsappNumber
+    ? buildWaMeDeepLink({
+        whatsappNumber,
+        prefillMessage: result.keywordLink.wa_prefill_message,
+      })
+    : null
 
   const replyText = result.keywordLink.reply_text
-    ? `${result.keywordLink.reply_text}\n${deepLink}`
-    : `Here's your link:\n${deepLink}`
+    ? [result.keywordLink.reply_text, deepLink].filter(Boolean).join('\n')
+    : deepLink
+      ? `Here's your link:\n${deepLink}`
+      : null
+  if (!replyText) return
 
   await sendDmReply({
+    instagramAccountId: config.ig_business_id,
     recipientIgUserId: igUserId,
     accessToken,
     message: replyText,
@@ -284,12 +339,17 @@ async function findOrCreateInstagramContact(
   igUsername: string
 ): Promise<string | null> {
   // Check if a contact with this Instagram ID already exists
-  const { data: existing } = await supabaseAdmin()
+  const { data: existing, error: existingError } = await supabaseAdmin()
     .from('contacts')
     .select('id')
     .eq('account_id', accountId)
     .eq('phone', `ig:${igUserId}`)
     .maybeSingle()
+
+  if (existingError) {
+    console.error('[instagram-webhook] Error finding Instagram contact:', existingError)
+    return null
+  }
 
   if (existing) {
     return existing.id
@@ -308,6 +368,19 @@ async function findOrCreateInstagramContact(
     .single()
 
   if (createError || !newContact) {
+    if (isUniqueViolation(createError)) {
+      const { data: racedContact, error: racedLookupError } = await supabaseAdmin()
+        .from('contacts')
+        .select('id')
+        .eq('account_id', accountId)
+        .eq('phone', `ig:${igUserId}`)
+        .maybeSingle()
+      if (racedLookupError) {
+        console.error('[instagram-webhook] Error resolving duplicate Instagram contact:', racedLookupError)
+      } else if (racedContact) {
+        return racedContact.id
+      }
+    }
     console.error('[instagram-webhook] Error creating contact:', createError)
     return null
   }
@@ -319,19 +392,24 @@ async function findOrCreateConversation(
   accountId: string,
   userId: string,
   contactId: string
-): Promise<string | null> {
+): Promise<{ id: string; status?: string | null } | null> {
   // Look for existing conversation
-  const { data: existing } = await supabaseAdmin()
+  const { data: existing, error: existingError } = await supabaseAdmin()
     .from('conversations')
-    .select('id')
+    .select('id, status')
     .eq('account_id', accountId)
     .eq('contact_id', contactId)
     .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle()
 
+  if (existingError) {
+    console.error('[instagram-webhook] Error finding conversation:', existingError)
+    return null
+  }
+
   if (existing) {
-    return existing.id
+    return existing
   }
 
   // Create new conversation
@@ -342,7 +420,7 @@ async function findOrCreateConversation(
       user_id: userId,
       contact_id: contactId,
     })
-    .select('id')
+    .select('id, status')
     .single()
 
   if (createError || !newConv) {
@@ -350,17 +428,38 @@ async function findOrCreateConversation(
     return null
   }
 
-  return newConv.id
+  return newConv
 }
 
 async function getWhatsAppNumber(accountId: string): Promise<string | null> {
   const { data, error } = await supabaseAdmin()
     .from('whatsapp_config')
-    .select('phone_number_id')
+    .select('phone_number_id, display_phone_number, access_token')
     .eq('account_id', accountId)
     .eq('status', 'connected')
     .maybeSingle()
 
-  if (error || !data?.phone_number_id) return null
-  return data.phone_number_id
+  if (error || !data?.phone_number_id) {
+    if (error) console.error('[instagram-webhook] WhatsApp config lookup failed:', error)
+    return null
+  }
+  if (data.display_phone_number) return data.display_phone_number
+
+  try {
+    const phone = await verifyPhoneNumber({
+      phoneNumberId: data.phone_number_id,
+      accessToken: decrypt(data.access_token),
+    })
+    const { error: updateError } = await supabaseAdmin()
+      .from('whatsapp_config')
+      .update({ display_phone_number: phone.display_phone_number })
+      .eq('account_id', accountId)
+    if (updateError) {
+      console.error('[instagram-webhook] Failed to cache WhatsApp display phone:', updateError)
+    }
+    return phone.display_phone_number
+  } catch (error) {
+    console.error('[instagram-webhook] Failed to resolve WhatsApp display phone:', error)
+    return null
+  }
 }

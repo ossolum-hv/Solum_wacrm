@@ -8,6 +8,7 @@ import {
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
 import type { TemplateButton, TemplateSampleValues } from '@/types'
+import { META_GRAPH_API_BASE } from '@/lib/meta-graph'
 
 /**
  * Sync message templates from Meta → local message_templates table.
@@ -22,8 +23,7 @@ import type { TemplateButton, TemplateSampleValues } from '@/types'
  * they remain visible so the user can notice drift and clean up.
  */
 
-const META_API_VERSION = 'v21.0'
-const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`
+const META_API_BASE = META_GRAPH_API_BASE
 
 interface MetaButton {
   type: string

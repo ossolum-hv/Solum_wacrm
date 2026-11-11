@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import crypto from 'crypto'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-import { createClient } from '@/lib/supabase/server'
+import { requireRole, UnauthorizedError } from '@/lib/auth/account'
 import { encrypt } from '@/lib/whatsapp/encryption'
+import { META_GRAPH_API_BASE } from '@/lib/meta-graph'
+import { subscribeInstagramPageWebhooks } from '@/lib/instagram/meta-api'
 
 function supabaseAdmin() {
   return createAdminClient(
@@ -32,15 +33,22 @@ export async function GET(request: Request) {
     }
 
     const [, accountId] = storedState.split(':')
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
+    let accountContext: Awaited<ReturnType<typeof requireRole>> | null = null
+    try {
+      accountContext = await requireRole('admin')
+    } catch (authError) {
+      if (authError instanceof UnauthorizedError) {
+        return NextResponse.redirect(
+          new URL('/login?next=/settings?tab=instagram', process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000')
+        )
+      }
       return NextResponse.redirect(
-        new URL('/login?next=/settings?tab=instagram', process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000')
+        new URL(`/settings?tab=instagram&oauth=${encodeURIComponent('insufficient_role')}`, process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000')
+      )
+    }
+    if (!accountId || !accountContext || accountContext.accountId !== accountId) {
+      return NextResponse.redirect(
+        new URL(`/settings?tab=instagram&oauth=${encodeURIComponent('account_changed_during_oauth')}`, process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000')
       )
     }
 
@@ -54,8 +62,15 @@ export async function GET(request: Request) {
       )
     }
 
+    const verifyToken = process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN
+    if (!verifyToken) {
+      return NextResponse.redirect(
+        new URL(`/settings?tab=instagram&oauth=${encodeURIComponent('missing_instagram_webhook_verify_token')}`, process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000')
+      )
+    }
+
     const tokenResponse = await fetch(
-      `https://graph.facebook.com/v21.0/oauth/access_token?client_id=${encodeURIComponent(appId)}&client_secret=${encodeURIComponent(appSecret)}&redirect_uri=${encodeURIComponent(redirectUri)}&code=${encodeURIComponent(code)}`,
+      `${META_GRAPH_API_BASE}/oauth/access_token?client_id=${encodeURIComponent(appId)}&client_secret=${encodeURIComponent(appSecret)}&redirect_uri=${encodeURIComponent(redirectUri)}&code=${encodeURIComponent(code)}`,
       { method: 'GET' }
     )
 
@@ -68,34 +83,52 @@ export async function GET(request: Request) {
     }
 
     const pagesResponse = await fetch(
-      `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token&access_token=${encodeURIComponent(tokenData.access_token)}`,
+      `${META_GRAPH_API_BASE}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${encodeURIComponent(tokenData.access_token)}`,
       { method: 'GET' }
     )
-    const pagesData = await pagesResponse.json()
-    if (!pagesResponse.ok || !pagesData.data?.[0]) {
-      console.error('[instagram/oauth/callback] page lookup failed:', pagesData)
+    const pagesData = await pagesResponse.json() as {
+      data?: Array<{
+        id?: string
+        access_token?: string
+        instagram_business_account?: { id?: string; username?: string }
+      }>
+      error?: { message?: string }
+    }
+    const linkedPages = (pagesData.data ?? []).filter(
+      (candidate): candidate is {
+        id: string
+        access_token: string
+        instagram_business_account: { id: string; username?: string; name?: string }
+      } => Boolean(candidate.id && candidate.access_token && candidate.instagram_business_account?.id)
+    )
+    if (!pagesResponse.ok || linkedPages.length === 0) {
+      console.error(
+        '[instagram/oauth/callback] page lookup failed:',
+        pagesData.error?.message ?? `Eligible Instagram Pages returned: ${linkedPages.length}`
+      )
       return NextResponse.redirect(
         new URL(`/settings?tab=instagram&oauth=${encodeURIComponent(pagesData.error?.message ?? 'page_lookup_failed')}`, process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000')
       )
     }
 
-    const page = pagesData.data[0]
-    const pageAccessToken = page.access_token
-    const pageInfoResponse = await fetch(
-      `https://graph.facebook.com/v21.0/${page.id}?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(pageAccessToken)}`,
-      { method: 'GET' }
-    )
-    const pageInfoData = await pageInfoResponse.json()
-    const igBusiness = pageInfoData.instagram_business_account
-
-    if (!igBusiness || !igBusiness.id) {
-      console.error('[instagram/oauth/callback] IG business lookup failed:', pageInfoData)
+    if (linkedPages.length > 1) {
       return NextResponse.redirect(
-        new URL(`/settings?tab=instagram&oauth=${encodeURIComponent(pageInfoData.error?.message ?? 'ig_lookup_failed')}`, process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000')
+        new URL(`/settings?tab=instagram&oauth=${encodeURIComponent('multiple_instagram_pages')}`, process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000')
       )
     }
 
-    const verifyToken = crypto.randomBytes(24).toString('hex')
+    const page = linkedPages[0]
+    const pageAccessToken = page.access_token
+    const igBusiness = page.instagram_business_account
+    const pageId = page.id
+
+    let webhookSubscribed = false
+    try {
+      await subscribeInstagramPageWebhooks({ pageId, accessToken: pageAccessToken })
+      webhookSubscribed = true
+    } catch (subscriptionError) {
+      console.error('[instagram/oauth/callback] Webhook subscription failed:', subscriptionError)
+    }
     const admin = supabaseAdmin()
     const { data: existing, error: existingError } = await admin
       .from('instagram_config')
@@ -112,14 +145,14 @@ export async function GET(request: Request) {
 
     const payload = {
       account_id: accountId,
-      user_id: user.id,
+      user_id: accountContext.userId,
       ig_business_id: igBusiness.id,
       ig_username: igBusiness.username || igBusiness.name || 'instagram-account',
-      page_id: page.id,
+      page_id: pageId,
       page_access_token: encrypt(pageAccessToken),
       verify_token: encrypt(verifyToken),
       status: 'connected',
-      webhook_subscribed: true,
+      webhook_subscribed: webhookSubscribed,
       connected_at: existing?.connected_at ?? new Date().toISOString(),
     }
 

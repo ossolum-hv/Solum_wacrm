@@ -1,7 +1,7 @@
 import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
-import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
+import { getMediaUrl } from '@/lib/whatsapp/meta-api'
 import { mirrorInboundMedia } from '@/lib/whatsapp/mirror-inbound-media'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
@@ -37,7 +37,8 @@ function supabaseAdmin() {
 
 interface WhatsAppMessage {
   id: string
-  from: string
+  from?: string
+  from_user_id?: string
   timestamp: string
   type: string
   text?: { body: string }
@@ -82,8 +83,9 @@ interface WhatsAppWebhookEntry {
         phone_number_id: string
       }
       contacts?: Array<{
-        profile: { name: string }
-        wa_id: string
+        profile?: { name?: string }
+        wa_id?: string
+        user_id?: string
       }>
       messages?: WhatsAppMessage[]
       statuses?: Array<{
@@ -254,7 +256,7 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
       }
 
       // Handle incoming messages
-      if (!value.messages || !value.contacts) continue
+      if (!value.messages) continue
 
       const phoneNumberId = value.metadata.phone_number_id
 
@@ -299,11 +301,22 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
 
       for (let i = 0; i < value.messages.length; i++) {
         const message = value.messages[i]
-        const contact = value.contacts[i] || value.contacts[0]
+        const contacts = value.contacts ?? []
+        const contact =
+          contacts.find((candidate) =>
+            (message.from && candidate.wa_id === message.from) ||
+            (message.from_user_id && candidate.user_id === message.from_user_id)
+          ) ?? contacts[i] ?? contacts[0]
+        const whatsappUserId = message.from_user_id ?? contact?.user_id ?? null
+        const resolvedContact = {
+          profile: { name: contact?.profile?.name ?? '' },
+          wa_id: contact?.wa_id ?? (message.from !== whatsappUserId ? message.from : '') ?? '',
+          user_id: whatsappUserId,
+        }
 
         await processMessage(
           message,
-          contact,
+          resolvedContact,
           // Tenancy — drives every contact / conversation lookup
           // and the engines' active-row dispatch.
           config.account_id,
@@ -574,7 +587,7 @@ async function handleReaction(
 
 async function processMessage(
   message: WhatsAppMessage,
-  contact: { profile: { name: string }; wa_id: string },
+  contact: { profile: { name: string }; wa_id: string; user_id: string | null },
   // Tenancy. Resolved from the matched whatsapp_config row; every
   // contact / conversation / message row created downstream is
   // stamped with this so any member of the account can see it.
@@ -588,15 +601,24 @@ async function processMessage(
   // See parseMessageContent for what it turns off.
   mirrorMedia: boolean
 ) {
-  const senderPhone = normalizePhone(message.from)
+  const whatsappUserId = message.from_user_id ?? contact.user_id
+  const senderPhone = normalizePhone(
+    whatsappUserId ? contact.wa_id : message.from ?? contact.wa_id
+  )
   const contactName = contact.profile.name
+
+  if (!senderPhone && !whatsappUserId) {
+    console.error('[webhook] Incoming message has no phone number or WhatsApp user ID:', message.id)
+    return
+  }
 
   // Find or create contact
   const contactOutcome = await findOrCreateContact(
     accountId,
     configOwnerUserId,
     senderPhone,
-    contactName
+    contactName,
+    whatsappUserId
   )
   if (!contactOutcome) return
   const contactRecord = contactOutcome.contact
@@ -1116,19 +1138,61 @@ async function findOrCreateContact(
   accountId: string,
   configOwnerUserId: string,
   phone: string,
-  name: string
+  name: string,
+  whatsappUserId: string | null = null
 ): Promise<ContactOutcome | null> {
+  if (whatsappUserId) {
+    const { data: byUserId, error: userIdLookupError } = await supabaseAdmin()
+      .from('contacts')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('whatsapp_user_id', whatsappUserId)
+      .maybeSingle()
+
+    if (userIdLookupError) {
+      console.error('[webhook] Error finding WhatsApp user ID contact:', userIdLookupError)
+      return null
+    }
+
+    if (byUserId) {
+      const updates: { name?: string; phone?: string; updated_at: string } = {
+        updated_at: new Date().toISOString(),
+      }
+      if (name && name !== byUserId.name) updates.name = name
+      if (phone && !byUserId.phone) updates.phone = phone
+      if (Object.keys(updates).length > 1) {
+        await supabaseAdmin().from('contacts').update(updates).eq('id', byUserId.id)
+      }
+      return { contact: byUserId, wasCreated: false }
+    }
+
+    if (phone) {
+      const existingByPhone = await findExistingContact(supabaseAdmin(), accountId, phone)
+      if (existingByPhone) {
+        const { data: linkedContact, error: linkError } = await supabaseAdmin()
+          .from('contacts')
+          .update({ whatsapp_user_id: whatsappUserId, name: name || existingByPhone.name })
+          .eq('id', existingByPhone.id)
+          .select()
+          .single()
+        if (linkError) {
+          console.error('[webhook] Error linking WhatsApp user ID to contact:', linkError)
+          return null
+        }
+        return { contact: linkedContact, wasCreated: false }
+      }
+    }
+  }
+
   // Find an existing contact for this account by phone. The shared
   // helper pre-filters in SQL by the last-8-digit suffix (so we don't
   // pull every contact on every inbound message) then applies the
   // strict `phonesMatch` in JS on the small candidate set. The same
   // helper backs the manual contact form and CSV import, so all three
   // paths agree on what "same number" means (issue #212).
-  const existingContact = await findExistingContact(
-    supabaseAdmin(),
-    accountId,
-    phone,
-  )
+  const existingContact = phone
+    ? await findExistingContact(supabaseAdmin(), accountId, phone)
+    : null
 
   if (existingContact) {
     // Update name if it changed
@@ -1151,7 +1215,8 @@ async function findOrCreateContact(
       account_id: accountId,
       user_id: configOwnerUserId,
       phone,
-      name: name || phone,
+      name: name || phone || whatsappUserId || 'WhatsApp contact',
+      whatsapp_user_id: whatsappUserId,
     })
     .select()
     .single()
@@ -1162,6 +1227,15 @@ async function findOrCreateContact(
     // unique index (migration 022) rejected the duplicate. Re-resolve
     // the existing row instead of dropping the message.
     if (isUniqueViolation(createError)) {
+      if (whatsappUserId) {
+        const { data: racedByUserId } = await supabaseAdmin()
+          .from('contacts')
+          .select('*')
+          .eq('account_id', accountId)
+          .eq('whatsapp_user_id', whatsappUserId)
+          .maybeSingle()
+        if (racedByUserId) return { contact: racedByUserId, wasCreated: false }
+      }
       const raced = await findExistingContact(supabaseAdmin(), accountId, phone)
       if (raced) return { contact: raced, wasCreated: false }
     }

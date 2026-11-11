@@ -1,37 +1,16 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import crypto from 'crypto'
-import { createClient } from '@/lib/supabase/server'
-
-async function resolveAccountId(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string,
-): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('account_id')
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  if (error || !data?.account_id) return null
-  return data.account_id as string
-}
+import { requireRole, toErrorResponse } from '@/lib/auth/account'
+import { META_GRAPH_API_VERSION } from '@/lib/meta-graph'
 
 export async function GET() {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const accountId = await resolveAccountId(supabase, user.id)
-    if (!accountId) {
-      return NextResponse.json({ error: 'Your profile is not linked to an account.' }, { status: 403 })
+    let accountId: string
+    try {
+      ({ accountId } = await requireRole('admin'))
+    } catch (error) {
+      return toErrorResponse(error)
     }
 
     const appId = process.env.META_APP_ID
@@ -62,17 +41,17 @@ export async function GET() {
         'instagram_basic',
         'instagram_manage_insights',
         'instagram_manage_messages',
+        'instagram_manage_comments',
         'pages_show_list',
         'pages_manage_metadata',
         'pages_read_engagement',
-        'pages_manage_posts',
       ].join(','),
       response_type: 'code',
       state,
     })
 
     return NextResponse.json({
-      url: `https://www.facebook.com/dialog/oauth?${params.toString()}`,
+      url: `https://www.facebook.com/${META_GRAPH_API_VERSION}/dialog/oauth?${params.toString()}`,
     })
   } catch (error) {
     console.error('[instagram/oauth] Internal error:', error)

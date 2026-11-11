@@ -9,7 +9,8 @@ import type { KeywordMatchResult } from './types'
  */
 export async function matchKeyword(
   accountId: string,
-  text: string
+  text: string,
+  source?: 'comment' | 'dm'
 ): Promise<KeywordMatchResult> {
   const normalized = text.trim().toLowerCase()
   if (!normalized) return { matched: false, keywordLink: null, matchedKeyword: null }
@@ -21,11 +22,16 @@ export async function matchKeyword(
     .eq('active', true)
     .order('created_at', { ascending: true })
 
-  if (error || !links || links.length === 0) {
+  if (error) {
+    console.error('[instagram/keywords] Lookup failed:', error)
+    throw new Error('Failed to load Instagram keyword links.')
+  }
+  if (!links || links.length === 0) {
     return { matched: false, keywordLink: null, matchedKeyword: null }
   }
 
   for (const link of links as InstagramKeywordLink[]) {
+    if (source && link.source_type !== 'both' && link.source_type !== source) continue
     const keyword = link.keyword.trim().toLowerCase()
     if (normalized.includes(keyword)) {
       return { matched: true, keywordLink: link, matchedKeyword: keyword }

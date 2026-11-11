@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { decrypt } from '@/lib/whatsapp/encryption'
+import {
+  isInstagramPageWebhookSubscribed,
+  verifyInstagramPageToken,
+} from '@/lib/instagram/meta-api'
 
 async function resolveAccountId(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -64,17 +69,53 @@ export async function GET() {
 
     const activeKeywordCount = keywords?.filter((link) => Boolean(link.active)).length ?? 0
     const isConfigured = Boolean(config)
+    let connected = Boolean(config && config.status === 'connected')
+    let webhookSubscribed = false
+    let webhookMessage: string | undefined
+
+    if (config?.status === 'connected') {
+      try {
+        await verifyInstagramPageToken({
+          pageId: config.page_id,
+          igBusinessId: config.ig_business_id,
+          accessToken: decrypt(config.page_access_token),
+        })
+      } catch (error) {
+        connected = false
+        webhookMessage = error instanceof Error ? error.message : 'Instagram credentials could not be verified.'
+        console.error('[instagram/health] Credential check failed:', webhookMessage)
+      }
+
+      const appId = process.env.META_APP_ID
+      if (connected && !appId) {
+        webhookMessage = 'META_APP_ID is not configured, so webhook subscription health cannot be checked.'
+      } else if (connected && appId) {
+        try {
+          webhookSubscribed = await isInstagramPageWebhookSubscribed({
+            pageId: config.page_id,
+            accessToken: decrypt(config.page_access_token),
+            appId,
+          })
+          if (!webhookSubscribed) {
+            webhookMessage = 'Meta does not report this app subscribed to both Instagram comments and messages.'
+          }
+        } catch (error) {
+          webhookMessage = error instanceof Error ? error.message : 'Unable to check Meta webhook subscription.'
+          console.error('[instagram/health] Webhook status check failed:', webhookMessage)
+        }
+      }
+    }
 
     return NextResponse.json({
-      connected: Boolean(config && config.status === 'connected'),
-      status: config?.status ?? 'disconnected',
-      webhookSubscribed: Boolean(config?.webhook_subscribed),
+      connected,
+      status: connected ? 'connected' : config?.status === 'connected' ? 'expired' : config?.status ?? 'disconnected',
+      webhookSubscribed,
       keywordCount: keywords?.length ?? 0,
       activeKeywordCount,
-      lastSyncedAt: config?.last_synced_at ?? config?.connected_at ?? null,
+      lastSyncedAt: config?.last_synced_at ?? null,
       igUsername: config?.ig_username ?? null,
       isConfigured,
-      message: config ? undefined : 'Instagram not connected yet.',
+      message: config ? webhookMessage : 'Instagram not connected yet.',
     })
   } catch (error) {
     console.error('[instagram/health] Internal error:', error)

@@ -21,7 +21,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { BroadcastError, type BroadcastPlan } from '@/lib/whatsapp/broadcast-core';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body';
-import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
+import { resolveWhatsAppRecipient } from '@/lib/whatsapp/recipient';
 
 /** Which recipients a resume pass picks up. */
 export type ResumeScope = 'pending' | 'failed' | 'all';
@@ -109,7 +109,7 @@ export interface ResumePlan {
   remaining: number;
   /**
    * In-scope rows that can never send because their contact has no
-   * usable phone. Stamped 'failed' by {@link planBroadcastResume} so
+   * usable WhatsApp recipient identifier. Stamped 'failed' by {@link planBroadcastResume} so
    * they stop blocking the broadcast's terminal status.
    */
   unsendable: number;
@@ -118,13 +118,13 @@ export interface ResumePlan {
 interface RecipientRow {
   id: string;
   template_params: unknown;
-  contact: { phone?: string | null } | { phone?: string | null }[] | null;
+  contact: { phone?: string | null; whatsapp_user_id?: string | null } | { phone?: string | null; whatsapp_user_id?: string | null }[] | null;
 }
 
 /** Supabase renders an embedded to-one join as an object or a 1-array. */
-function contactPhone(row: RecipientRow): string | null {
+function recipientContact(row: RecipientRow): { phone?: string | null; whatsapp_user_id?: string | null } | null {
   const c = Array.isArray(row.contact) ? row.contact[0] : row.contact;
-  return c?.phone ?? null;
+  return c ?? null;
 }
 
 /**
@@ -158,7 +158,7 @@ export async function planBroadcastResume(
   const statuses = scopeStatuses(scope);
   const { data: rawRows, error: recError } = await db
     .from('broadcast_recipients')
-    .select('id, template_params, contact:contacts(phone)')
+    .select('id, template_params, contact:contacts(phone, whatsapp_user_id)')
     .eq('broadcast_id', broadcastId)
     .in('status', statuses)
     // Oldest first, so repeated capped passes chew through the backlog
@@ -172,22 +172,25 @@ export async function planBroadcastResume(
 
   const rows = (rawRows ?? []) as RecipientRow[];
 
-  // A recipient whose contact has no usable phone can never send. Stamp
+  // A recipient whose contact has no usable WhatsApp identifier can never send. Stamp
   // it failed now: leaving it 'pending' would keep the broadcast in
   // 'sending' forever, which is the very symptom being fixed.
   const sendable: RecipientRow[] = [];
   const unsendable: string[] = [];
   for (const row of rows) {
-    const sanitized = sanitizePhoneForMeta(contactPhone(row) ?? '');
-    if (isValidE164(sanitized)) sendable.push(row);
-    else unsendable.push(row.id);
+    try {
+      resolveWhatsAppRecipient(recipientContact(row) ?? {});
+      sendable.push(row);
+    } catch {
+      unsendable.push(row.id);
+    }
   }
   if (unsendable.length > 0) {
     await db
       .from('broadcast_recipients')
       .update({
         status: 'failed',
-        error_message: 'No valid phone number on contact',
+        error_message: 'No valid WhatsApp recipient identifier on contact',
       })
       .in('id', unsendable);
   }
@@ -239,13 +242,17 @@ export async function planBroadcastResume(
     phoneNumberId: config.phone_number_id,
     accessToken: decrypt(config.access_token),
     templateRow: resolvedTemplate.row,
-    planned: slice.map((row) => ({
-      recipientRowId: row.id,
-      phone: sanitizePhoneForMeta(contactPhone(row) ?? ''),
-      params: Array.isArray(row.template_params)
-        ? row.template_params.filter((p): p is string => typeof p === 'string')
-        : [],
-    })),
+    planned: slice.map((row) => {
+      const recipient = resolveWhatsAppRecipient(recipientContact(row) ?? {});
+      return {
+        recipientRowId: row.id,
+        phone: recipient.phone ?? '',
+        ...(recipient.phone ? {} : { whatsappUserId: recipient.to }),
+        params: Array.isArray(row.template_params)
+          ? row.template_params.filter((p): p is string => typeof p === 'string')
+          : [],
+      };
+    }),
     rejected: 0,
   };
 

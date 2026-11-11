@@ -37,11 +37,9 @@ import {
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import {
-  sanitizePhoneForMeta,
-  isValidE164,
-  phoneVariants,
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils';
+import { resolveWhatsAppRecipient } from '@/lib/whatsapp/recipient';
 import type { MessageTemplate } from '@/types';
 import {
   resolveTemplateRow,
@@ -234,19 +232,20 @@ export async function sendMessageToConversation(
   }
 
   const contact = conversation.contact;
-  if (!contact?.phone) {
+  if (!contact) {
     throw new SendMessageError(
       'bad_request',
-      'Contact phone number not found',
+      'Contact not found',
       400
     );
   }
-
-  const sanitizedPhone = sanitizePhoneForMeta(contact.phone);
-  if (!isValidE164(sanitizedPhone)) {
+  let recipient: ReturnType<typeof resolveWhatsAppRecipient>;
+  try {
+    recipient = resolveWhatsAppRecipient(contact);
+  } catch (error) {
     throw new SendMessageError(
       'bad_request',
-      'Invalid phone number format',
+      error instanceof Error ? error.message : 'Invalid WhatsApp recipient',
       400
     );
   }
@@ -406,12 +405,11 @@ export async function sendMessageToConversation(
   // with "recipient not in allowed list"; persist a working variant
   // back to the contact so the next send goes straight through.
   let waMessageId = '';
-  let workingPhone = sanitizedPhone;
+  let workingPhone = recipient.to;
   try {
-    const variants = phoneVariants(sanitizedPhone);
     let lastError: unknown = null;
 
-    for (const variant of variants) {
+    for (const variant of recipient.variants) {
       try {
         waMessageId = await attempt(variant);
         workingPhone = variant;
@@ -437,9 +435,9 @@ export async function sendMessageToConversation(
     throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
   }
 
-  if (workingPhone !== sanitizedPhone) {
+  if (recipient.phone && workingPhone !== recipient.phone) {
     console.log(
-      `[send-message] Auto-corrected contact phone: ${sanitizedPhone} → ${workingPhone}`
+      `[send-message] Auto-corrected contact phone: ${recipient.phone} → ${workingPhone}`
     );
     await db
       .from('contacts')
